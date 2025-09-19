@@ -1,8 +1,8 @@
 CXX = g++
-CXXFLAGS = -std=c++11 -Wall -Wextra -O2
+CXXFLAGS = -std=c++23 -Wall -Wextra -O2
 TARGET = vdiskcat
 SOURCES = vdiskcat.cpp
-HEADERS = vdiskcat.h
+HEADERS = vdiskcat.h hfs.h
 
 $(TARGET): $(SOURCES) $(HEADERS)
 	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SOURCES)

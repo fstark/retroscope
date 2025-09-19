@@ -1,5 +1,10 @@
 #include "vdiskcat.h"
 
+#include <cstdint>
+#include <string>
+#include <fstream>
+#include <format>
+
 // Convert big-endian to host byte order
 uint16_t be16toh_custom(uint16_t val)
 {
@@ -44,20 +49,14 @@ void dump(const std::vector<uint8_t> &data)
 }
 
 // block_t implementations
-btree_header_node_t block_t::as_btree_node()
+btree_header_node_t block_t::as_btree_header_node()
 {
-	return btree_header_node_t();
+	return btree_header_node_t(*this);
 }
 
 master_directory_block_t block_t::as_master_directory_block() 
 { 
 	return master_directory_block_t(*this); 
-}
-
-// master_directory_block_t implementations
-master_directory_block_t::master_directory_block_t(block_t &block) : block_(block)
-{
-	content = reinterpret_cast<HFSMasterDirectoryBlock *>(block_.data());
 }
 
 bool master_directory_block_t::isHFSVolume() const
@@ -84,28 +83,28 @@ uint16_t master_directory_block_t::extendsExtendStart(int index) const
 {
 	if (index < 0 || index >= 3)
 		throw std::out_of_range("Extent index out of range");
-	return be16toh_custom(content->drXTExtRec[index][0]);
+	return be16toh_custom(content->drXTExtRec[index].startBlock);
 }
 
 uint16_t master_directory_block_t::extendsExtendCount(int index) const
 {
 	if (index < 0 || index >= 3)
 		throw std::out_of_range("Extent index out of range");
-	return be16toh_custom(content->drXTExtRec[index][1]);
+	return be16toh_custom(content->drXTExtRec[index].blockCount);
 }
 
 uint32_t master_directory_block_t::catalogExtendStart(int index) const
 {
 	if (index < 0 || index >= 3)
 		throw std::out_of_range("Extent index out of range");
-	return be16toh_custom(content->drCTExtRec[index][0]);
+	return be16toh_custom(content->drCTExtRec[index].startBlock);
 }
 
 uint16_t master_directory_block_t::catalogExtendCount(int index) const
 {
 	if (index < 0 || index >= 3)
 		throw std::out_of_range("Extent index out of range");
-	return be16toh_custom(content->drCTExtRec[index][1]);
+	return be16toh_custom(content->drCTExtRec[index].blockCount);
 }
 
 // file_t implementations
@@ -135,6 +134,20 @@ btree_file_t::btree_file_t(file_t &file) : file_(file)
 {
 	auto start = file_.to_absolute_block(0);
 	std::cout << "Btree file starts at absolute block: " << start+file_.partition().allocation_start() << std::endl;
+
+    //  We read the node as a 512 byte block, but it may be larger
+    //  We look into the btree header to find the actual node size
+    auto block = file_.partition().read_allocated_block(start,512);
+    // block.dump();
+    auto header = block.as_btree_header_node();
+
+    std::cout << std::format( "Node size: {}\n", header.node_size() );
+
+    //  Re-read with the proper node size
+    auto block2 = file_.partition().read_allocated_block(start,header.node_size());
+    auto header2 = block2.as_btree_header_node();
+
+    std::cout << std::format( "First leaf node: {}\n", header2.first_leaf_node() );
 }
 
 // partition_t implementations
@@ -310,6 +323,27 @@ void partition_t::readCatalogHeader(uint64_t catalogExtendStartBlock)
     std::cout << "\n\n";
 }
 
+block_t partition_t::read_allocated_block( uint16_t blockIndex , uint16_t size )
+{
+    std::cout << std::format("read_allocated_block({},{})\n", blockIndex, size);
+
+    if (size == 0xffff)
+        size = allocation_block_size();
+
+    std::vector<uint8_t> block(size);
+    auto offset = partitionStart_ + allocationStart_ * 512 /* ? */ + blockIndex * allocation_block_size();
+    std::cout << "  Reading block at offset: " << offset << std::endl;
+
+    file_.seekg(offset);
+    file_.read(reinterpret_cast<char *>(block.data()), allocationBlockSize_);
+    if (!file_.good())
+    {
+        throw std::runtime_error("Error reading block");
+    }
+    return block;
+}
+
+
 void partition_t::readMasterDirectoryBlock()
 {
 	auto block = read(2);
@@ -400,8 +434,8 @@ void partition_t::readMasterDirectoryBlock()
         std::cout << "===================================" << std::endl;
 
 		//	We now read the extend btree for all file extends information
-		auto b = read(4);
-		b.dump();
+		// auto b = read(4);
+		// b.dump();
 		
         // readCatalogHeader(be16toh_custom(mdb.drCTExtRec[0][0]));
         // readCatalogRoot(rootNode_);
