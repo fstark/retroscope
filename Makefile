@@ -1,10 +1,11 @@
 CXX = g++
 CXXFLAGS = -std=c++11 -Wall -Wextra -O2
 TARGET = vdiskcat
-SOURCE = vdiskcat.cpp
+SOURCES = vdiskcat.cpp
+HEADERS = vdiskcat.h
 
-$(TARGET): $(SOURCE)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SOURCE)
+$(TARGET): $(SOURCES) $(HEADERS)
+	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SOURCES)
 
 clean:
 	rm -f $(TARGET)
