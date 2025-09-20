@@ -204,7 +204,7 @@ btree_file_t file_t::as_btree_file()
 // btree_file_t implementations
 btree_file_t::btree_file_t(file_t &file) : file_(file)
 {
-	auto start = file_.to_absolute_block(0);
+	auto start = file_.allocation_offset(0);
 	// std::cout << "Btree file starts at absolute block: " << start+file_.partition().
 
 #ifdef VERBOSE
@@ -214,7 +214,7 @@ btree_file_t::btree_file_t(file_t &file) : file_(file)
 
     //  We read the node as a 512 byte block, but it may be larger
     //  We look into the btree header to find the actual node size
-    auto block1 = file_.partition().read_allocated_block(start,512);
+    auto block1 = file_.partition().read_allocation(start,512);
     // block.dump();
     auto header1 = block1.as_btree_header_node();
 
@@ -224,7 +224,7 @@ btree_file_t::btree_file_t(file_t &file) : file_(file)
 #endif
 
     //  Re-read with the proper node size
-    auto block2 = file_.partition().read_allocated_block(start,header1.node_size());
+    auto block2 = file_.partition().read_allocation(start,header1.node_size());
     auto header2 = block2.as_btree_header_node();
 
     first_leaf_node_= header2.first_leaf_node();

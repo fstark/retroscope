@@ -341,7 +341,7 @@ public:
 		auto disk_offset = partitionStart_ + allocationStart_ * 512 /* ? */ + offset;
 
 		file_.seekg(disk_offset);
-		file_.read(reinterpret_cast<char *>(block.data()), allocationBlockSize_);
+		file_.read(reinterpret_cast<char *>(block.data()), size);
 		if (!file_.good())
 		{
 			throw std::runtime_error("Error reading block");
