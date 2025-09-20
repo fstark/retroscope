@@ -42,6 +42,23 @@
 		"typeinfo": "cpp",
 		"vector": "cpp",
 		"memory": "cpp",
-		"format": "cpp"
+		"format": "cpp",
+		"atomic": "cpp",
+		"compare": "cpp",
+		"concepts": "cpp",
+		"tuple": "cpp",
+		"type_traits": "cpp",
+		"utility": "cpp",
+		"bit": "cpp",
+		"charconv": "cpp",
+		"cstddef": "cpp",
+		"exception": "cpp",
+		"optional": "cpp",
+		"span": "cpp",
+		"sstream": "cpp",
+		"system_error": "cpp",
+		"text_encoding": "cpp",
+		"variant": "cpp",
+		"memory_resource": "cpp"
 	}
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#define VERBOSE
+
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -299,6 +301,9 @@ public:
 	void add_extent( uint16_t start_block, const extent_t &extent );
 	partition_t &partition() { return partition_; }
 	uint16_t to_absolute_block(uint16_t block) const;
+
+	uint32_t allocation_offset(uint32_t offset) const;
+
 	btree_file_t as_btree_file();
 };
 
@@ -324,7 +329,28 @@ public:
 	uint64_t allocation_start() { return allocationStart_; }
 	uint32_t allocation_block_size() { return allocationBlockSize_; }
 	block_t read_allocated_block( uint16_t block , uint16_t size=0xffff );
-    void readMasterDirectoryBlock();
+
+//	reads in the allocation zone
+	block_t read_allocation( uint32_t offset , uint16_t size )
+	{
+	#ifdef VERBOSE
+		std::cout << std::format("read_allocation({},{})\n", offset, size);
+	#endif
+
+		std::vector<uint8_t> block(size);
+		auto disk_offset = partitionStart_ + allocationStart_ * 512 /* ? */ + offset;
+
+		file_.seekg(disk_offset);
+		file_.read(reinterpret_cast<char *>(block.data()), allocationBlockSize_);
+		if (!file_.good())
+		{
+			throw std::runtime_error("Error reading block");
+		}
+
+		return block;
+	}
+
+	void readMasterDirectoryBlock();
 
     void readCatalogHeader(uint64_t catalogExtendStartBlock);
     void readCatalogRoot(uint16_t rootNode);
@@ -348,14 +374,22 @@ class btree_file_t
 
 		while (block_index)
 		{
-			auto absolute_block = file_.to_absolute_block(block_index);
-			// convert to allocation block
+			uint32_t file_offset = block_index * node_size_;
+			uint32_t allocation_offset = file_.allocation_offset( file_offset );
+std::cout << std::format( "**** {} IS THE BTREE BLOC #\n", block_index );
+std::cout << std::format( "**** {} IS THE LOCAL OFFSET\n", file_offset );
+std::cout << std::format( "**** {} IS THE ALLOC OFFSET\n", allocation_offset );
+
+			//	We find the "allocation" block corresponding to this btree block
+
+
+// convert to allocation block
 			// uint32_t allocation_index = file.
 			// auto local_index = file_.to_absolute_block(block_index);
 #ifdef VERBOSE
-			std::cout << std::format("iterate_leaves() - first leaf node: {}, absolute block:{} node size: {}\n", first_leaf_node_, absolute_block, node_size_);
+			std::cout << std::format("iterate_leaves() - first leaf node: {}, allocation offset:{} node size: {}\n", first_leaf_node_, allocation_offset, node_size_);
 #endif
-			block_t block = file_.partition().read_allocated_block( absolute_block, node_size_ );
+			block_t block = file_.partition().read_allocation( allocation_offset, node_size_ );
 			btree_leaf_node_t leaf( block );
 			callback( leaf );
 			block_index = leaf.f_link();

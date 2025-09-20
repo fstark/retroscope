@@ -182,6 +182,20 @@ uint16_t file_t::to_absolute_block(uint16_t block) const
 	return 0xffff;
 }
 
+uint32_t file_t::allocation_offset(uint32_t offset) const
+{
+    auto allocation_block_size = partition_.allocation_block_size();
+    for (auto &ext : extents_)
+    {
+        if (offset < ext.count*allocation_block_size)
+            return ext.start*allocation_block_size + offset;
+        offset -= ext.count*allocation_block_size;
+    }
+    return 0xffffffff;
+}
+
+
+
 btree_file_t file_t::as_btree_file() 
 { 
 	return btree_file_t(*this); 
