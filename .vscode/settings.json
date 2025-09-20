@@ -41,6 +41,7 @@
 		"string_view": "cpp",
 		"typeinfo": "cpp",
 		"vector": "cpp",
-		"memory": "cpp"
+		"memory": "cpp",
+		"format": "cpp"
 	}
 }

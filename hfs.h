@@ -53,6 +53,12 @@ const int8_t ndHdrNode = 1;			//	Header, describes the b-tree
 const int8_t ndMapNode = 2;
 const int8_t ndLeafNode = -1;		//	A leaf node (contains actual data, chained together)
 
+// HFS Catalog record types
+const uint16_t kHFSFolderRecord = 0x0100;		// Folder record
+const uint16_t kHFSFileRecord = 0x0200;			// File record
+const uint16_t kHFSFolderThreadRecord = 0x0300;	// Folder thread record
+const uint16_t kHFSFileThreadRecord = 0x0400;		// File thread record
+
 // HFS B-tree node (all nodes)
 struct BTNodeDescriptor
 {
@@ -84,6 +90,16 @@ struct BTHeaderRec
     uint32_t reserved3[16];
 };
 
+// HFS Extents B-tree Leaf Record
+struct HFSExtentsRecord
+{
+	uint8_t keyLength;              // Key length
+	uint8_t forkType;               // Fork type (0 = data fork, 0xFF = resource fork)
+	uint32_t fileID;                // File ID
+	uint16_t startBlock;            // Starting allocation block
+	HFSExtentRecord extents[3];     // Extent descriptors
+};
+
 // HFS Catalog Key
 struct HFSCatalogKey
 {
@@ -93,47 +109,69 @@ struct HFSCatalogKey
     uint8_t nodeName[32]; // Node name (Pascal string)
 };
 
-// HFS Catalog Directory Record
+// HFS Catalog Directory Record - 70 bytes
 struct HFSCatalogFolder
 {
-    int16_t recordType;     // Record type (1 = folder, 2 = file)
-    uint16_t flags;         // Flags
+    int16_t recordType;     // Record type (0x0100 = folder)
+    uint16_t flags;         // Folder flags
     uint16_t valence;       // Number of items in folder
-    uint32_t dirID;         // Directory ID
+    uint32_t folderID;      // Folder ID (same as dirID)
     uint32_t createDate;    // Creation date
     uint32_t modifyDate;    // Modification date
     uint32_t backupDate;    // Backup date
-    uint32_t userInfo[8];   // User info
-    uint32_t finderInfo[8]; // Finder info
-    uint32_t textEncoding;  // Text encoding
-    uint32_t reserved;      // Reserved
+    struct {                // Finder information - 16 bytes
+        struct {            // Folder's window rectangle
+            int16_t top;
+            int16_t left;
+            int16_t bottom;
+            int16_t right;
+        } frRect;
+        uint16_t frFlags;   // Finder flags
+        struct {
+            uint16_t v;     // Folder's location vertical
+            uint16_t h;     // Folder's location horizontal
+        } frLocation;
+        int16_t opaque;     // Reserved
+    } userInfo;
+    struct {                // Additional Finder information - 16 bytes
+        int8_t opaque[16];
+    } finderInfo;
+    uint32_t reserved[4];   // Reserved - initialized as zero
 };
 
-// HFS Catalog File Record
+// HFS Catalog File Record - 102 bytes
 struct HFSCatalogFile
 {
-    int16_t recordType;             // Record type (2 = file)
-    uint8_t flags;                  // Flags
-    uint8_t fileType;               // File type
-    uint32_t fileCreator;           // File creator
-    uint16_t finderFlags;           // Finder flags
-    uint32_t location[2];           // File location
-    uint16_t reserved;              // Reserved
-    uint32_t dataLogicalSize;       // Data fork logical size
-    uint32_t dataPhysicalSize;      // Data fork physical size
-    HFSExtentRecord dataExtents[3]; // Data fork extents
-    uint32_t rsrcLogicalSize;       // Resource fork logical size
-    uint32_t rsrcPhysicalSize;      // Resource fork physical size
-    HFSExtentRecord rsrcExtents[3]; // Resource fork extents
+    int16_t recordType;             // Record type (0x0200 = file)
+    uint8_t flags;                  // File flags
+    int8_t fileType;                // File type (unused, set to zero)
+    struct {                        // Finder information - 16 bytes
+        uint32_t fdType;            // File type
+        uint32_t fdCreator;         // File creator
+        uint16_t fdFlags;           // Finder flags
+        struct {
+            int16_t v;              // File location vertical
+            int16_t h;              // File location horizontal
+        } fdLocation;
+        int16_t opaque;             // Reserved
+    } userInfo;
+    uint32_t fileID;                // File ID
+    uint16_t dataStartBlock;        // Data fork start block (not used - set to zero)
+    int32_t dataLogicalSize;        // Data fork logical size
+    int32_t dataPhysicalSize;       // Data fork physical size
+    uint16_t rsrcStartBlock;        // Resource fork start block (not used - set to zero)
+    int32_t rsrcLogicalSize;        // Resource fork logical size
+    int32_t rsrcPhysicalSize;       // Resource fork physical size
     uint32_t createDate;            // Creation date
     uint32_t modifyDate;            // Modification date
     uint32_t backupDate;            // Backup date
-    uint32_t userInfo[8];           // User info
-    uint32_t finderInfo[8];         // Finder info
-    uint16_t clumpSize;             // Clump size
-    HFSExtentRecord extents[3];     // Additional extents
-    uint32_t textEncoding;          // Text encoding
-    uint32_t reserved2;             // Reserved
+    struct {                        // Additional Finder information - 16 bytes
+        int8_t opaque[16];
+    } finderInfo;
+    uint16_t clumpSize;             // File clump size (not used)
+    HFSExtentRecord dataExtents[3]; // Data fork extent records
+    HFSExtentRecord rsrcExtents[3]; // Resource fork extent records
+    uint32_t reserved;              // Reserved - initialized as zero
 };
 
 // Apple Partition Map entry
@@ -160,6 +198,5 @@ struct ApplePartitionMapEntry
     // ... padding to 512 bytes
     uint8_t padding[376];
 };
-
 #pragma pack(pop)
 
