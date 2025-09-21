@@ -12,6 +12,42 @@ master_directory_block_t as_master_directory_block(block_t& block)
     return master_directory_block_t(block);
 }
 
+// Function to check if a data source contains an HFS partition
+bool is_hfs(std::shared_ptr<data_source_t> source) {
+    // Need at least 1024 + 512 bytes to check for HFS MDB at block 2
+    if (source->size() < 1536) {
+        return false;
+    }
+    
+    // Read block 2 (offset 1024) where HFS Master Directory Block should be
+    block_t mdb_block = source->read_block(1024, 512);
+    const uint8_t* data = static_cast<const uint8_t*>(mdb_block.data());
+    
+    // Check HFS signature (0x4244 = "BD" in big endian at offset 0)
+    uint16_t signature = (uint16_t(data[0]) << 8) | uint16_t(data[1]);
+    if (signature != 0x4244) {
+        return false;
+    }
+    
+    // Additional basic sanity checks
+    // Check that allocation block size is reasonable (typically 512, 1024, etc.)
+    uint32_t alloc_block_size = (uint32_t(data[20]) << 24) | (uint32_t(data[21]) << 16) | 
+                                (uint32_t(data[22]) << 8) | uint32_t(data[23]);
+    
+    // Allocation block size should be a power of 2 and >= 512
+    if (alloc_block_size < 512 || (alloc_block_size & (alloc_block_size - 1)) != 0) {
+        return false;
+    }
+    
+    return true;
+}
+
+// Function to parse an HFS data source
+void parse_hfs(std::shared_ptr<data_source_t> source) {
+    partition_t hfs(source);
+    hfs.parse();
+}
+
 // master_directory_block_t implementations
 bool master_directory_block_t::isHFSVolume() const
 {

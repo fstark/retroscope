@@ -30,6 +30,12 @@ class master_directory_block_t;
 class partition_t;
 class btree_file_t;
 
+// Function to check if a data source contains an HFS partition
+bool is_hfs(std::shared_ptr<data_source_t> source);
+
+// Function to parse an HFS data source
+void parse_hfs(std::shared_ptr<data_source_t> source);
+
 struct hierarchy_t
 {
 	uint32_t parent_id;
@@ -267,6 +273,7 @@ class partition_t
     uint16_t rootNode_;
 
 	block_t read(uint64_t blockOffset) const;
+	void readMasterDirectoryBlock();
 
 public:
     partition_t(std::shared_ptr<data_source_t> data_source);
@@ -274,6 +281,8 @@ public:
 	uint64_t allocation_start() { return allocationStart_; }
 	uint32_t allocation_block_size() { return allocationBlockSize_; }
 	block_t read_allocated_block( uint16_t block , uint16_t size=0xffff );
+
+	void parse() { readMasterDirectoryBlock(); }
 
 //	reads in the allocation zone
 	block_t read_allocation( uint32_t offset , uint16_t size )
@@ -285,8 +294,6 @@ public:
 		auto disk_offset = allocationStart_ * 512 + offset;
 		return data_source_->read_block(disk_offset, size);
 	}
-
-	void readMasterDirectoryBlock();
 
     void readCatalogHeader(uint64_t catalogExtendStartBlock);
     void readCatalogRoot(uint16_t rootNode);
