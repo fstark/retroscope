@@ -100,14 +100,11 @@ uint16_t master_directory_block_t::catalogExtendCount(int index) const
 // file_t implementations
 void file_t::add_extent(const extent_t &extend)
 {
-std::cout << std::format("Adding extent start={}, count={}\n", extend.start, extend.count);
-	extents_.push_back(extend);
+    extents_.push_back(extend);
 }
 
 void file_t::add_extent(uint16_t start_block, const extent_t &extent)
 {
-std::cout << std::format("Adding extent at start block {}, extent start={}, count={}\n", start_block, extent.start, extent.count);
-
     //  check that we already have start_block blocks in the extent
     uint16_t total_blocks = 0;
     for (const auto &ext : extents_) {
@@ -146,7 +143,7 @@ uint32_t file_t::allocation_offset(uint32_t offset) const
             return ext.start*allocation_block_size + offset;
         offset -= ext.count*allocation_block_size;
     }
-    return 0xffffffff;
+    throw std::out_of_range("Offset out of range");
 }
 
 btree_file_t file_t::as_btree_file()
@@ -208,7 +205,7 @@ void partition_t::readMasterDirectoryBlock()
             std::cout << std::format("Extents extent {}: start={}, count={}\n", i, start, count);
         }
     }
-	
+
     // Set up catalog file
     for (int i = 0; i < 3; i++)
     {
@@ -239,23 +236,6 @@ void partition_t::readMasterDirectoryBlock()
             }
         }
     });
-
-std::cout << "=== MOVING TO CATALOG ===\n";
-
-
-    // Read catalog header to get root node
-std::cout << std::format( "Catalog header at block {}\n", catalog_.extents()[0].start );
-
-	//	Print the extends of the catalog
-	for( const auto& ext : catalog_.extents() )
-	{
-		std::cout << std::format( "Catalog extent: start={}, count={}\n", ext.start, ext.count );
-	}
-
-	block_t header_block = read_allocated_block(catalog_.extents()[0].start);
-	btree_header_node_t header = as_btree_header_node(header_block);
-	rootNode_ = header.first_leaf_node();
-	std::cout << std::format("Catalog root node: {}\n", rootNode_);
 
     auto catalog_btree = catalog_.as_btree_file();
 
