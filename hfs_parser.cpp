@@ -191,8 +191,10 @@ void partition_t::readMasterDirectoryBlock()
     allocationBlockSize_ = mdb.allocationBlockSize();
     allocationStart_ = mdb.allocationBlockStart();
 
+#ifdef VERBOSE
     std::cout << std::format("Allocation block size: {}\n", allocationBlockSize_);
     std::cout << std::format("Allocation start: {}\n", allocationStart_);
+#endif
 
     // Set up extents file
     for (int i = 0; i < 3; i++)
@@ -202,7 +204,9 @@ void partition_t::readMasterDirectoryBlock()
         if (count > 0)
         {
             extents_.add_extent({start, count});
+#ifdef VERBOSE
             std::cout << std::format("Extents extent {}: start={}, count={}\n", i, start, count);
+#endif
         }
     }
 
@@ -214,7 +218,9 @@ void partition_t::readMasterDirectoryBlock()
         if (count > 0)
         {
             catalog_.add_extent({start, count});
+#ifdef VERBOSE
             std::cout << std::format("Catalog extent {}: start={}, count={}\n", i, start, count);
+#endif
         }
     }
 

@@ -22,7 +22,7 @@
 #include "file.h"
 #include "data.h"
 
-#define VERBOSE
+#define noVERBOSE
 
 // Forward declarations
 class btree_header_node_t;
@@ -72,6 +72,7 @@ class master_directory_block_t : public type_node_t<HFSMasterDirectoryBlock>
 public:
 	master_directory_block_t(block_t &block) : type_node_t<HFSMasterDirectoryBlock>(block)
 	{
+#ifdef VERBOSE
 		block_.dump();
 		// print the contents of the HFSMasterDirectoryBlock structure
 		std::cout << std::format("drSigWord: 0x{:04X}\n", be16toh(content->drSigWord));
@@ -116,7 +117,8 @@ public:
 
 		// print offsetof(drXTExtRec)
 		std::cout << std::format("Offset of drXTExtRec: 0x{:X}\n", offsetof(HFSMasterDirectoryBlock, drXTExtRec));
-		}
+#endif
+	}
 
 	bool isHFSVolume() const;
 	std::string getVolumeName() const;

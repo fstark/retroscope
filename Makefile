@@ -1,17 +1,30 @@
 CXX = g++
 CXXFLAGS = -std=c++23 -Wall -Wextra -O2
 # CXXFLAGS = -std=c++23 -Wall -Wextra -O0 -g
+DEPFLAGS = -MMD -MP
+
 TARGET = retroscope
 SOURCES = retroscope.cpp utils.cpp file.cpp hfs_parser.cpp apm_datasource.cpp dc42_datasource.cpp stripped_data_source.cpp bin_datasource.cpp
-HEADERS = retroscope.h hfs.h utils.h file.h hfs_parser.h data.h apm_datasource.h dc42_datasource.h stripped_data_source.h bin_datasource.h
+OBJECTS = $(SOURCES:.cpp=.o)
+DEPS = $(SOURCES:.cpp=.d)
 
-$(TARGET): $(SOURCES) $(HEADERS)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SOURCES)
+# Default target
+all: $(TARGET)
+
+# Include dependency files
+-include $(DEPS)
+
+$(TARGET): $(OBJECTS)
+	$(CXX) $(CXXFLAGS) -o $(TARGET) $(OBJECTS)
+
+# Compile each source file to object file and generate dependencies
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) $(DEPFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(OBJECTS) $(DEPS)
 
 install: $(TARGET)
 	cp $(TARGET) /usr/local/bin/
 
-.PHONY: clean install
+.PHONY: all clean install
