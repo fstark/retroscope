@@ -2,8 +2,8 @@ CXX = g++
 CXXFLAGS = -std=c++23 -Wall -Wextra -O2
 # CXXFLAGS = -std=c++23 -Wall -Wextra -O0 -g
 TARGET = retroscope
-SOURCES = retroscope.cpp
-HEADERS = retroscope.h hfs.h
+SOURCES = retroscope.cpp utils.cpp
+HEADERS = retroscope.h hfs.h utils.h
 
 $(TARGET): $(SOURCES) $(HEADERS)
 	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SOURCES)

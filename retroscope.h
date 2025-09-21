@@ -12,35 +12,20 @@
 #include <map>
 #include <algorithm>
 #include <endian.h>
-
-// Utility functions
-// Note: be16toh and be32toh are provided by <endian.h>
-std::string string_from_pstring(const uint8_t *pascalStr);
-std::string string_from_code(uint32_t code);
-void dump(const std::vector<uint8_t> &data);
 #include <array>
 #include <memory>
 #include <functional>
 #include <format>
 #include <cassert>
-#include <endian.h>
 
 #include "hfs.h"
+#include "utils.h"
 
 // Forward declarations
 class btree_header_node_t;
 class master_directory_block_t;
 class partition_t;
 class btree_file_t;
-
-// Utility functions
-uint16_t be16toh_util(uint16_t val);
-uint32_t be32toh_util(uint32_t val);
-std::string string_from_pstring(const uint8_t *pascalStr);
-std::string sanitize_string(const std::string &str);
-std::string string_from_code(uint32_t code);
-void dump(const std::vector<uint8_t> &data);
-void dump(const uint8_t *data, size_t size );
 
 class File
 {
@@ -78,6 +63,9 @@ public:
 	const std::vector<File*> &files() const { return files_; }
 	const std::vector<Folder*> &folders() const { return folders_; }
 };
+
+// Function declarations that depend on the classes above
+void print_folder_hierarchy(const Folder& folder, int indent = 0);
 
 struct hierarchy_t
 {
