@@ -1,6 +1,6 @@
 CXX = g++
-#CXXFLAGS = -std=c++23 -Wall -Wextra -O2
-CXXFLAGS = -std=c++23 -Wall -Wextra -O0 -g
+CXXFLAGS = -std=c++23 -Wall -Wextra -O2
+# CXXFLAGS = -std=c++23 -Wall -Wextra -O0 -g
 TARGET = vdiskcat
 SOURCES = vdiskcat.cpp
 HEADERS = vdiskcat.h hfs.h

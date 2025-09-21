@@ -177,7 +177,7 @@ struct HFSCatalogFile
 // Apple Partition Map entry
 struct ApplePartitionMapEntry
 {
-    uint16_t pmSig;          // Partition signature (0x504M)
+    uint16_t pmSig;          // Partition signature (0x504D)
     uint16_t pmSigPad;       // Reserved
     uint32_t pmMapBlkCnt;    // Number of blocks in partition map
     uint32_t pmPyPartStart;  // First physical block of partition

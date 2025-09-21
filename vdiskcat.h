@@ -1,6 +1,6 @@
 #pragma once
 
-#define VERBOSE
+#define noVERBOSE
 
 #include <iostream>
 #include <fstream>
@@ -37,6 +37,7 @@ class btree_file_t;
 uint16_t be16toh_util(uint16_t val);
 uint32_t be32toh_util(uint32_t val);
 std::string string_from_pstring(const uint8_t *pascalStr);
+std::string sanitize_string(const std::string &str);
 std::string string_from_code(uint32_t code);
 void dump(const std::vector<uint8_t> &data);
 void dump(const uint8_t *data, size_t size );
@@ -44,6 +45,7 @@ void dump(const uint8_t *data, size_t size );
 class File
 {
 	std::string name_;
+	std::string sane_name_;
 	std::string type_;
 	std::string creator_;
 	uint32_t data_size_;
@@ -51,10 +53,10 @@ class File
 	public:
 	File( const std::string &name, const std::string &type, 
 		  const std::string &creator, uint32_t data_size, uint32_t rsrc_size )
-		: name_(name), type_(type), creator_(creator),
+		: name_(name), sane_name_(sanitize_string(name)), type_(type), creator_(creator),
 		  data_size_(data_size), rsrc_size_(rsrc_size) {}
 	
-	const std::string &name() const { return name_; }
+	const std::string &name() const { return sane_name_; }
 	const std::string &type() const { return type_; }
 	const std::string &creator() const { return creator_; }
 	uint32_t data_size() const { return data_size_; }
@@ -64,14 +66,15 @@ class File
 class Folder
 {
 	std::string name_;
+	std::string sane_name_;
 	std::vector<File*> files_;
 	std::vector<Folder*> folders_;
 public:
-	Folder( const std::string &name ) : name_(name) {}
+	Folder( const std::string &name ) : name_(name), sane_name_(sanitize_string(name)) {}
 	void add_file( File *file ) { files_.push_back(file); }
 	void add_folder( Folder *folder ) { folders_.push_back(folder); }
 
-	const std::string &name() const { return name_; }
+	const std::string &name() const { return sane_name_; }
 	const std::vector<File*> &files() const { return files_; }
 	const std::vector<Folder*> &folders() const { return folders_; }
 };
@@ -140,7 +143,9 @@ class btree_header_node_t : public type_node_t<BTNodeDescriptor>
 	public:
 		btree_header_node_t(block_t &block) : type_node_t<BTNodeDescriptor>(block)
 		{
+#ifdef VERBOSE
 			std::cout << "Node kind: " << (int)content->kind << "\n";
+#endif
 			if (content->kind != ndHdrNode)
 			{
 				throw std::runtime_error("Not a valid B-tree header node");
@@ -376,10 +381,11 @@ class btree_file_t
 		{
 			uint32_t file_offset = block_index * node_size_;
 			uint32_t allocation_offset = file_.allocation_offset( file_offset );
+#ifdef VERBOSE
 std::cout << std::format( "**** {} IS THE BTREE BLOC #\n", block_index );
 std::cout << std::format( "**** {} IS THE LOCAL OFFSET\n", file_offset );
 std::cout << std::format( "**** {} IS THE ALLOC OFFSET\n", allocation_offset );
-
+#endif
 			//	We find the "allocation" block corresponding to this btree block
 
 

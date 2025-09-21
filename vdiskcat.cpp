@@ -90,6 +90,73 @@ void dump(const std::vector<uint8_t> &data)
     dump(data.data(), data.size());
 }
 
+// Sanitize string by replacing control characters with escape codes and doubling backslashes
+std::string sanitize_string(const std::string &str)
+{
+    std::string result;
+    result.reserve(str.size() * 2); // Reserve space to avoid frequent reallocations
+    
+    for (char c : str)
+    {
+        if (c == '\\')
+        {
+            result += "\\\\"; // Double backslashes
+        }
+        else if (c == '\n')
+        {
+            result += "\\n";
+        }
+        else if (c == '\r')
+        {
+            result += "\\r";
+        }
+        else if (c == '\t')
+        {
+            result += "\\t";
+        }
+        else if (c == '\0')
+        {
+            result += "\\0";
+        }
+        else if (c == '\a')
+        {
+            result += "\\a";
+        }
+        else if (c == '\b')
+        {
+            result += "\\b";
+        }
+        else if (c == '\f')
+        {
+            result += "\\f";
+        }
+        else if (c == '\v')
+        {
+            result += "\\v";
+        }
+        else if (c == '\"')
+        {
+            result += "\\\"";
+        }
+        // else if (c == '\'')
+        // {
+        //     result += "\\'";
+        // }
+        else if (std::iscntrl(static_cast<unsigned char>(c)))
+        {
+            // For other control characters, use hex escape
+            result += "\\x";
+            result += std::format("{:02x}", static_cast<unsigned char>(c));
+        }
+        else
+        {
+            result += c; // Regular printable character
+        }
+    }
+    
+    return result;
+}
+
 // block_t implementations
 btree_header_node_t block_t::as_btree_header_node()
 {
@@ -363,11 +430,12 @@ void partition_t::readMasterDirectoryBlock()
 
         // Logical block size
         allocationBlockSize_ = mdb.allocationBlockSize();
-		std::cout << "Allocation block size: " << allocationBlockSize_ << " bytes" << std::endl;
-
         allocationStart_ = mdb.allocationBlockStart();
-        std::cout << "Allocation starts at: " << allocationStart_ << std::endl;
 
+#ifdef VERBOSE
+        std::cout << "Allocation block size: " << allocationBlockSize_ << " bytes" << std::endl;
+        std::cout << "Allocation starts at: " << allocationStart_ << std::endl;
+#endif
         // extents_.add_extent(drAlBlSt, be16toh_custom(mdb.drNmAlBlks));
 
         // // Number of allocation blocks
@@ -383,14 +451,18 @@ void partition_t::readMasterDirectoryBlock()
         // std::cout << "Extents overflow clump size (drXTClpSiz): " << extentsSize << " bytes" << std::endl;
 
         // Extents overflow extents (3 extent descriptors)
+#ifdef VERBOSE
         std::cout << "drXTExtRec (extents extents):\n";
+#endif
         for (int i = 0; i < 3; i++)
         {
             auto startBlock = mdb.extendsExtendStart(i);
             auto blockCount = mdb.extendsExtendCount(i);
             if (blockCount)
             {
+#ifdef VERBOSE
                 std::cout << "  [" << i << "]=" << startBlock << "-" << blockCount << "\n";
+#endif
                 extents_.add_extent( {startBlock, blockCount } );
             }
         }
@@ -398,18 +470,21 @@ void partition_t::readMasterDirectoryBlock()
         // Catalog file extents (first node of catalog btree)
         // (we have to do the catalog before scanning the extent leaves
         //  because the first 3 extents are not in the btree)
+#ifdef VERBOSE
         std::cout << "drCTExtRec (catalog extents):\n";
+#endif
         for (int i = 0; i < 3; i++)
         {
             auto startBlock = mdb.catalogExtendStart(i);
             auto blockCount = mdb.catalogExtendCount(i);
             if (blockCount)
             {
+#ifdef VERBOSE
                 std::cout << "  [" << i << "]=" << startBlock << "-" << blockCount << "\n";
+#endif
                 catalog_.add_extent({startBlock, blockCount});
             }
         }
-        std::cout << std::endl;
 
 
 		btree_file_t extents_btree = extents_.as_btree_file();
@@ -417,11 +492,12 @@ void partition_t::readMasterDirectoryBlock()
         extents_btree.iterate_extents( [&]( const extents_record_t &extent_record )
         {
             // Extract key from the extents record
-            uint8_t keyLength = extent_record.key_length();
             uint8_t forkType = extent_record.fork_type();
             uint32_t file_ID = extent_record.file_ID();
             uint16_t startBlock = extent_record.start_block();
 
+#ifdef VERBOSE
+            uint8_t keyLength = extent_record.key_length();
             std::cout << "Key length: " << static_cast<int>(keyLength) << std::endl;
             std::cout << "Fork type: " << static_cast<int>(forkType) << " (" << (forkType == 0 ? "data fork" : "resource fork") << ")" << std::endl;
             std::cout << "File ID: " << file_ID << std::endl;
@@ -436,6 +512,7 @@ void partition_t::readMasterDirectoryBlock()
                               << ", Count=" << extent.count << std::endl;
                 }
             }
+#endif
 
             //  We add the file_ID 4 data extends to the catalog file
             if (file_ID==4 && forkType==0x00)
@@ -449,7 +526,9 @@ void partition_t::readMasterDirectoryBlock()
             }
         });
 
+#ifdef VERBOSE
         std::cout << "===================================" << std::endl;
+#endif
 
         //  We now have a proper catalog file
         //  We also (later) will know all the extents of all the files
@@ -478,17 +557,20 @@ void partition_t::readMasterDirectoryBlock()
         {
             if (folder)
             {
+#ifdef VERBOSE
                 std::cout << std::format( " FOLDER: {} / {} [{}] {} items)\n",
                     folder->folder_id(),
                     record->parent_id(),
                     record->name(),
                     folder->item_count()
                 );
+#endif
                 folders.emplace( folder->folder_id(), Folder( record->name() ) );
                 folder_hierarchy.push_back( { record->parent_id(), folder->folder_id() } );
             }
             if (file)
             {
+#ifdef VERBOSE
                 std::cout << std::format( " FILE  : {} / {} [{}] {}/{} DATA: {} bytes RSRC: {} bytes\n", 
                     file->file_id(),
                     record->parent_id(),
@@ -498,6 +580,7 @@ void partition_t::readMasterDirectoryBlock()
                     file->dataLogicalSize(),
                     file->rsrcLogicalSize()
                 );
+#endif
                 files.emplace( file->file_id(), File( record->name(), file->type(), file->creator(), file->dataLogicalSize(), file->rsrcLogicalSize() ) );
                 file_hierarchy.push_back( { record->parent_id(), file->file_id() } );
             }
