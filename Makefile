@@ -2,6 +2,7 @@ CXX = g++
 CXXFLAGS = -std=c++23 -Wall -Wextra -O2
 # CXXFLAGS = -std=c++23 -Wall -Wextra -O0 -g
 DEPFLAGS = -MMD -MP
+MAKEFLAGS += -j12
 
 TARGET = retroscope
 SOURCES = retroscope.cpp utils.cpp file.cpp hfs_parser.cpp apm_datasource.cpp dc42_datasource.cpp stripped_data_source.cpp bin_datasource.cpp
