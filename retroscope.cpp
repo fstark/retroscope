@@ -1,4 +1,5 @@
 #include "retroscope.h"
+#include "data.h"
 
 #include <cstdint>
 #include <string>
@@ -11,7 +12,7 @@
 #include <endian.h>
 
 // Process Apple Partition Map
-void processAPM(std::ifstream &file)
+void processAPM(std::ifstream &file, const char* filename)
 {
     std::vector<uint8_t> block(512);
 
@@ -68,7 +69,10 @@ void processAPM(std::ifstream &file)
             uint64_t size = be32toh(entry->pmPartBlkCnt) * 512ULL;
 
             std::cout << "  Start: " << startOffset << " bytes, Size: " << size << " bytes\n";
-            partition_t hfs(file, startOffset, size);
+            
+            auto file_source = std::make_shared<file_data_source_t>(filename);
+            auto partition_source = std::make_shared<offset_data_source_t>(file_source, startOffset);
+            partition_t hfs(partition_source);
             hfs.readMasterDirectoryBlock();
         }
     }
@@ -125,7 +129,7 @@ int main(int argc, char *argv[])
         {
             // This appears to be a partitioned disk
             std::cout << "Detected partitioned disk image\n";
-            processAPM(file);
+            processAPM(file, filename);
             file.close();
             return 0;
         }
@@ -142,11 +146,12 @@ int main(int argc, char *argv[])
     if (file.good())
     {
 		block_t block(hfsBlock);
-		auto mdb = block.as_master_directory_block();
+		auto mdb = as_master_directory_block(block);
         if (mdb.isHFSVolume())
         {
             std::cout << "Found raw HFS partition\n";
-            partition_t hfs(file, 0, fileSize);
+            auto file_source = std::make_shared<file_data_source_t>(filename);
+            partition_t hfs(file_source);
             hfs.readMasterDirectoryBlock();
         }
         else

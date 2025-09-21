@@ -13,12 +13,14 @@
 #include <array>
 #include <memory>
 #include <functional>
+#include "data.h"
 #include <format>
 #include <cassert>
 
 #include "hfs.h"
 #include "utils.h"
 #include "file.h"
+#include "data.h"
 
 #define noVERBOSE
 
@@ -40,20 +42,9 @@ struct extent_t
 	uint16_t count;
 };
 
-// Classes
-class block_t
-{
-	std::vector<uint8_t> data_;
-
-public:
-	block_t(const std::vector<uint8_t> &data) : data_(data) {}
-
-	btree_header_node_t as_btree_header_node();
-	master_directory_block_t as_master_directory_block();
-
-	void *data() { return data_.data(); }
-	void dump() const { ::dump(data_); }
-};
+// Free-standing functions to convert block_t to specific node types
+btree_header_node_t as_btree_header_node(block_t& block);
+master_directory_block_t as_master_directory_block(block_t& block);
 
 template <class T> class type_node_t
 {
@@ -267,9 +258,7 @@ public:
 
 class partition_t
 {
-    std::ifstream &file_;
-    uint64_t partitionStart_;
-    uint64_t partitionSize_;
+    std::shared_ptr<data_source_t> data_source_;
     uint64_t allocationStart_ = 0;
     uint64_t allocationBlockSize_ = 512;
 
@@ -278,11 +267,9 @@ class partition_t
     uint16_t rootNode_;
 
 	block_t read(uint64_t blockOffset) const;
-    std::vector<uint8_t> readBlock512(uint64_t blockOffset);
-    std::vector<uint8_t> readBlock(uint64_t blockOffset);
 
 public:
-    partition_t(std::ifstream &file, uint64_t partitionStart, uint64_t partitionSize);
+    partition_t(std::shared_ptr<data_source_t> data_source);
 
 	uint64_t allocation_start() { return allocationStart_; }
 	uint32_t allocation_block_size() { return allocationBlockSize_; }
@@ -295,17 +282,8 @@ public:
 		std::cout << std::format("read_allocation({},{})\n", offset, size);
 	#endif
 
-		std::vector<uint8_t> block(size);
-		auto disk_offset = partitionStart_ + allocationStart_ * 512 /* ? */ + offset;
-
-		file_.seekg(disk_offset);
-		file_.read(reinterpret_cast<char *>(block.data()), size);
-		if (!file_.good())
-		{
-			throw std::runtime_error("Error reading block");
-		}
-
-		return block;
+		auto disk_offset = allocationStart_ * 512 + offset;
+		return data_source_->read_block(disk_offset, size);
 	}
 
 	void readMasterDirectoryBlock();

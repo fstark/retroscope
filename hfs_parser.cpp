@@ -1,15 +1,15 @@
 #include "hfs_parser.h"
 #include <map>
 
-// block_t implementations
-btree_header_node_t block_t::as_btree_header_node()
+// Free-standing functions to convert block_t to specific node types
+btree_header_node_t as_btree_header_node(block_t& block)
 {
-    return btree_header_node_t(*this);
+    return btree_header_node_t(block);
 }
 
-master_directory_block_t block_t::as_master_directory_block()
+master_directory_block_t as_master_directory_block(block_t& block)
 {
-    return master_directory_block_t(*this);
+    return master_directory_block_t(block);
 }
 
 // master_directory_block_t implementations
@@ -120,42 +120,15 @@ btree_file_t file_t::as_btree_file()
 }
 
 // partition_t implementations
-partition_t::partition_t(std::ifstream &file, uint64_t partitionStart, uint64_t partitionSize)
-    : file_(file), partitionStart_(partitionStart), partitionSize_(partitionSize),
+partition_t::partition_t(std::shared_ptr<data_source_t> data_source)
+    : data_source_(data_source),
       extents_(*this), catalog_(*this)
 {
 }
 
 block_t partition_t::read(uint64_t blockOffset) const
 {
-    std::vector<uint8_t> block(512);
-    file_.seekg(partitionStart_ + blockOffset * 512);
-    file_.read(reinterpret_cast<char *>(block.data()), 512);
-    if (!file_.good())
-    {
-        throw std::runtime_error("Error reading block");
-    }
-    return block_t(block);
-}
-
-std::vector<uint8_t> partition_t::readBlock512(uint64_t blockOffset)
-{
-    std::vector<uint8_t> block(512);
-    auto disk_offset = partitionStart_ + blockOffset * 512;
-
-    file_.seekg(disk_offset);
-    file_.read(reinterpret_cast<char *>(block.data()), 512);
-    if (!file_.good())
-    {
-        throw std::runtime_error("Error reading block");
-    }
-
-    return block;
-}
-
-std::vector<uint8_t> partition_t::readBlock(uint64_t blockOffset)
-{
-    return readBlock512(blockOffset);
+    return data_source_->read_block(blockOffset * 512, 512);
 }
 
 block_t partition_t::read_allocated_block(uint16_t block, uint16_t size)
@@ -167,23 +140,14 @@ block_t partition_t::read_allocated_block(uint16_t block, uint16_t size)
     std::cout << std::format("read_allocated_block({},{}) allocation start={}\n", block, size, allocationStart_);
 #endif
 
-    std::vector<uint8_t> data(size);
-    auto disk_offset = partitionStart_ + (allocationStart_ + block) * 512;
-
-    file_.seekg(disk_offset);
-    file_.read(reinterpret_cast<char *>(data.data()), size);
-    if (!file_.good())
-    {
-        throw std::runtime_error("Error reading allocated block");
-    }
-
-    return data;
+    auto disk_offset = (allocationStart_ + block) * 512;
+    return data_source_->read_block(disk_offset, size);
 }
 
 void partition_t::readMasterDirectoryBlock()
 {
     block_t mdb_block = read(2);  // MDB is at block 2
-    master_directory_block_t mdb = mdb_block.as_master_directory_block();
+    master_directory_block_t mdb = as_master_directory_block(mdb_block);
 
     if (!mdb.isHFSVolume())
     {
@@ -245,7 +209,7 @@ void partition_t::readMasterDirectoryBlock()
     if (catalog_.has_extents())
     {
         block_t header_block = read_allocated_block(catalog_.extents()[0].start);
-        btree_header_node_t header = header_block.as_btree_header_node();
+        btree_header_node_t header = as_btree_header_node(header_block);
         rootNode_ = header.first_leaf_node();
         std::cout << std::format("Catalog root node: {}\n", rootNode_);
     }
@@ -384,7 +348,7 @@ btree_file_t::btree_file_t(file_t &file) : file_(file)
     //  We look into the btree header to find the actual node size
     auto block1 = file_.partition().read_allocation(start,512);
     // block.dump();
-    auto header1 = block1.as_btree_header_node();
+    auto header1 = as_btree_header_node(block1);
 
 #ifdef VERBOSE
     std::cout << std::format( "Node size: {}\n", header1.node_size() );
@@ -393,7 +357,7 @@ btree_file_t::btree_file_t(file_t &file) : file_(file)
 
     //  Re-read with the proper node size
     auto block2 = file_.partition().read_allocation(start,header1.node_size());
-    auto header2 = block2.as_btree_header_node();
+    auto header2 = as_btree_header_node(block2);
 
     first_leaf_node_= header2.first_leaf_node();
     node_size_= header2.node_size();
