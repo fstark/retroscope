@@ -3,6 +3,7 @@
 #include "hfs_parser.h"
 #include "apm_datasource.h"
 #include "dc42_datasource.h"
+#include "bin_datasource.h"
 
 #include <cstdint>
 #include <string>
@@ -37,6 +38,13 @@ int main(int argc, char *argv[])
         // Process all sources, expanding them if they contain sub-partitions
         for (size_t i = 0; i < sources.size(); ++i) {
             auto source = sources[i];
+            
+            // Try BIN unwrapping (CD-ROM format)
+            auto bin_source = make_bin_data_source(source);
+            if (bin_source != source) {
+                sources.push_back(bin_source);
+                continue;
+            }
             
             // Try DC42 unwrapping
             auto dc42_source = make_dc42_data_source(source);

@@ -22,7 +22,7 @@
 #include "file.h"
 #include "data.h"
 
-#define noVERBOSE
+#define VERBOSE
 
 // Forward declarations
 class btree_header_node_t;
@@ -70,7 +70,53 @@ public:
 class master_directory_block_t : public type_node_t<HFSMasterDirectoryBlock>
 {
 public:
-	master_directory_block_t(block_t &block) : type_node_t<HFSMasterDirectoryBlock>(block) {}
+	master_directory_block_t(block_t &block) : type_node_t<HFSMasterDirectoryBlock>(block)
+	{
+		block_.dump();
+		// print the contents of the HFSMasterDirectoryBlock structure
+		std::cout << std::format("drSigWord: 0x{:04X}\n", be16toh(content->drSigWord));
+		std::cout << std::format("drCrDate: {}\n", be32toh(content->drCrDate));
+		std::cout << std::format("drLsMod: {}\n", be32toh(content->drLsMod));
+		std::cout << std::format("drAtrb: 0x{:04X}\n", be16toh(content->drAtrb));
+		std::cout << std::format("drNmFls: {}\n", be16toh(content->drNmFls));
+		std::cout << std::format("drVBMSt: {}\n", be16toh(content->drVBMSt));
+		std::cout << std::format("drAllocPtr: {}\n", be16toh(content->drAllocPtr));
+		std::cout << std::format("drNmAlBlks: {}\n", be16toh(content->drNmAlBlks));
+		std::cout << std::format("drAlBlkSiz: {}\n", be32toh(content->drAlBlkSiz));
+		std::cout << std::format("drClpSiz: {}\n", be32toh(content->drClpSiz));
+		std::cout << std::format("drAlBlSt: {}\n", be16toh(content->drAlBlSt));
+		std::cout << std::format("drNxtCNID: {}\n", be32toh(content->drNxtCNID));
+		std::cout << std::format("drFreeBks: {}\n", be16toh(content->drFreeBks));
+		std::cout << std::format("drVN: {}\n", string_from_pstring(content->drVN));
+		std::cout << std::format("drVolBkUp: {}\n", be32toh(content->drVolBkUp));
+		std::cout << std::format("drVSeqNum: {}\n", be16toh(content->drVSeqNum));
+		std::cout << std::format("drWrCnt: {}\n", be32toh(content->drWrCnt));
+		std::cout << std::format("drXTClpSiz: {}\n", be32toh(content->drXTClpSiz));
+		std::cout << std::format("drCTClpSiz: {}\n", be32toh(content->drCTClpSiz));
+		std::cout << std::format("drNmRtDirs: {}\n", be16toh(content->drNmRtDirs));
+		std::cout << std::format("drFilCnt: {}\n", be32toh(content->drFilCnt));
+		std::cout << std::format("drDirCnt: {}\n", be32toh(content->drDirCnt));
+		std::cout << std::format("drVCSize: {}\n", be16toh(content->drVCSize));
+		std::cout << std::format("drVBMCSize: {}\n", be16toh(content->drVBMCSize));
+		std::cout << std::format("drCtlCSize: {}\n", be16toh(content->drCtlCSize));
+		std::cout << std::format("drXTFlSize: {}\n", be32toh(content->drXTFlSize));
+		std::cout << std::format("drXTExtRec[0]: startBlock={}, blockCount={}\n",
+			be16toh(content->drXTExtRec[0].startBlock), be16toh(content->drXTExtRec[0].blockCount));
+		std::cout << std::format("drXTExtRec[1]: startBlock={}, blockCount={}\n",
+			be16toh(content->drXTExtRec[1].startBlock), be16toh(content->drXTExtRec[1].blockCount));
+		std::cout << std::format("drXTExtRec[2]: startBlock={}, blockCount={}\n",
+			be16toh(content->drXTExtRec[2].startBlock), be16toh(content->drXTExtRec[2].blockCount));
+		std::cout << std::format("drCTFlSize: {}\n", be32toh(content->drCTFlSize));
+		std::cout << std::format("drCTExtRec[0]: startBlock={}, blockCount={}\n",
+			be16toh(content->drCTExtRec[0].startBlock), be16toh(content->drCTExtRec[0].blockCount));
+		std::cout << std::format("drCTExtRec[1]: startBlock={}, blockCount={}\n",
+			be16toh(content->drCTExtRec[1].startBlock), be16toh(content->drCTExtRec[1].blockCount));
+		std::cout << std::format("drCTExtRec[2]: startBlock={}, blockCount={}\n",
+			be16toh(content->drCTExtRec[2].startBlock), be16toh(content->drCTExtRec[2].blockCount));
+
+		// print offsetof(drXTExtRec)
+		std::cout << std::format("Offset of drXTExtRec: 0x{:X}\n", offsetof(HFSMasterDirectoryBlock, drXTExtRec));
+		}
 
 	bool isHFSVolume() const;
 	std::string getVolumeName() const;
@@ -242,7 +288,6 @@ class file_t
 {
 	std::vector<extent_t> extents_;
 	partition_t &partition_;
-	uint32_t block_size_ = 512;	//	For now fixed
 
 public:
 	file_t(partition_t &partition) : partition_(partition) {}
