@@ -10,16 +10,16 @@ File::File(const std::string &name, const std::string &type,
 
 Folder::Folder(const std::string &name) : name_(name), sane_name_(sanitize_string(name)) {}
 
-void visit_folder(const Folder &folder, file_visitor_t &visitor)
+void visit_folder(std::shared_ptr<Folder> folder, file_visitor_t &visitor)
 {
     visitor.pre_visit_folder(folder);
-    for (const auto &file : folder.files())
+    for (const auto &file : folder->files())
     {
-        visitor.visit_file(*file);
+        visitor.visit_file(file);
     }
-    for (const auto &subfolder : folder.folders())
+    for (const auto &subfolder : folder->folders())
     {
-        visit_folder(*subfolder, visitor);
+        visit_folder(subfolder, visitor);
     }
     visitor.post_visit_folder(folder);
 }

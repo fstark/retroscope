@@ -21,18 +21,18 @@
 class terse_visitor_t : public file_visitor_t
 {
 public:
-    void visit_file(const File &file) override
+    void visit_file(std::shared_ptr<File> file) override
     {
-        if (gType != "" && file.type() != gType)
+        if (gType != "" && file->type() != gType)
             return;
-        if (gCreator != "" && file.creator() != gCreator)
+        if (gCreator != "" && file->creator() != gCreator)
             return;
-        if (gFind != "" && !has_case_insensitive_substring(file.name(), gFind))
+        if (gFind != "" && !has_case_insensitive_substring(file->name(), gFind))
             return;
-        std::cout << file.name()
-                  << " (" << file.type() << "/" << file.creator() << ")"
-                  << " DATA:" << file.data_size() << " bytes"
-                  << " RSRC:" << file.rsrc_size() << " bytes" << std::endl;
+        std::cout << file->name()
+                  << " (" << file->type() << "/" << file->creator() << ")"
+                  << " DATA:" << file->data_size() << " bytes"
+                  << " RSRC:" << file->rsrc_size() << " bytes" << std::endl;
     }
 };
 
@@ -41,21 +41,21 @@ class dump_visitor_t : public file_visitor_t
     size_t indent_ = 0;
 
 public:
-    void visit_file(const File &file) override
+    void visit_file(std::shared_ptr<File> file) override
     {
         std::string indent_str(static_cast<size_t>(indent_ * 2), ' ');
-        std::cout << indent_str << "File: " << file.name()
-                  << " (" << file.type() << "/" << file.creator() << ")"
-                  << " DATA: " << file.data_size() << " bytes"
-                  << " RSRC: " << file.rsrc_size() << " bytes" << std::endl;
+        std::cout << indent_str << "File: " << file->name()
+                  << " (" << file->type() << "/" << file->creator() << ")"
+                  << " DATA: " << file->data_size() << " bytes"
+                  << " RSRC: " << file->rsrc_size() << " bytes" << std::endl;
     }
-    void pre_visit_folder(const Folder &folder) override
+    void pre_visit_folder(std::shared_ptr<Folder> folder) override
     {
         std::string indent_str(static_cast<size_t>(indent_ * 2), ' ');
-        std::cout << indent_str << "Folder: " << folder.name() << std::endl;
+        std::cout << indent_str << "Folder: " << folder->name() << std::endl;
         indent_++;
     }
-    void post_visit_folder(const Folder &) override
+    void post_visit_folder(std::shared_ptr<Folder>) override
     {
         indent_--;
     }
@@ -179,10 +179,10 @@ void process_disk_image(const std::filesystem::path &filepath)
             try
             {
                 partition_t partition(source);
-                Folder *root = partition.get_root_folder();
+                auto root = partition.get_root_folder();
                 // dump_visitor_t dumper;
                 terse_visitor_t dumper;
-                visit_folder(*root, dumper);
+                visit_folder(root, dumper);
             }
             catch (const std::exception &hfs_error)
             {

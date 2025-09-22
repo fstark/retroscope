@@ -325,13 +325,13 @@ class partition_t
 	block_t read(uint64_t blockOffset) const;
 	void build_root_folder();
 
-	std::unique_ptr<Folder> root_folder;
-	std::map<uint32_t, Folder *> folders;
+	std::shared_ptr<Folder> root_folder;
+	std::map<uint32_t, std::shared_ptr<Folder>> folders;
 
 public:
 	partition_t(std::shared_ptr<data_source_t> data_source);
 
-	Folder *get_root_folder() { return root_folder.get(); } // unsure if we should return the unique_ptr &
+	std::shared_ptr<Folder> get_root_folder() { return root_folder; }
 
 	uint64_t allocation_start() { return allocationStart_; }
 	uint32_t allocation_block_size() { return allocationBlockSize_; }

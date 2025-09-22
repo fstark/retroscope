@@ -28,17 +28,17 @@ class Folder
 {
 	std::string name_;
 	std::string sane_name_;
-	std::vector<std::unique_ptr<File>> files_;
-	std::vector<std::unique_ptr<Folder>> folders_;
+	std::vector<std::shared_ptr<File>> files_;
+	std::vector<std::shared_ptr<Folder>> folders_;
 
 public:
 	Folder(const std::string &name);
-	void add_file(std::unique_ptr<File> file) { files_.push_back(std::move(file)); }
-	void add_folder(std::unique_ptr<Folder> folder) { folders_.push_back(std::move(folder)); }
+	void add_file(std::shared_ptr<File> file) { files_.push_back(file); }
+	void add_folder(std::shared_ptr<Folder> folder) { folders_.push_back(folder); }
 
 	const std::string &name() const { return sane_name_; }
-	const std::vector<std::unique_ptr<File>> &files() const { return files_; }
-	const std::vector<std::unique_ptr<Folder>> &folders() const { return folders_; }
+	const std::vector<std::shared_ptr<File>> &files() const { return files_; }
+	const std::vector<std::shared_ptr<Folder>> &folders() const { return folders_; }
 };
 
 class file_visitor_t
@@ -47,9 +47,9 @@ public:
 	virtual ~file_visitor_t() = default;
 	virtual void pre_visit() {}
 	virtual void post_visit() {}
-	virtual void visit_file(const File &file) = 0;
-	virtual void pre_visit_folder(const Folder &) {}
-	virtual void post_visit_folder(const Folder &) {}
+	virtual void visit_file(std::shared_ptr<File> file) = 0;
+	virtual void pre_visit_folder(std::shared_ptr<Folder>) {}
+	virtual void post_visit_folder(std::shared_ptr<Folder>) {}
 };
 
-void visit_folder(const Folder &folder, file_visitor_t &visitor);
+void visit_folder(std::shared_ptr<Folder> folder, file_visitor_t &visitor);

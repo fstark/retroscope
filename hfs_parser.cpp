@@ -244,8 +244,8 @@ void partition_t::build_root_folder()
     auto catalog_btree = catalog_.as_btree_file();
 
     // Root folder has ID 2
-    root_folder = std::make_unique<Folder>(mdb.getVolumeName());
-    folders[2] = root_folder.get();
+    root_folder = std::make_shared<Folder>(mdb.getVolumeName());
+    folders[2] = root_folder;
 
     std::vector<hierarchy_t> hierarchy;
 
@@ -264,7 +264,7 @@ void partition_t::build_root_folder()
 
         if (folder_record) {
             // This is a folder
-            auto* folder = new Folder(catalog_record->name());
+            auto folder = std::make_shared<Folder>(catalog_record->name());
             auto folder_id = folder_record->folder_id();
             folders[folder_id] = folder;
             
@@ -277,7 +277,7 @@ void partition_t::build_root_folder()
 #endif
         } else if (file_record) {
             // This is a file
-            std::unique_ptr<File> file = std::make_unique<File>(
+            std::shared_ptr<File> file = std::make_shared<File>(
                 catalog_record->name(),
                 file_record->type(),
                 file_record->creator(),
@@ -288,7 +288,7 @@ void partition_t::build_root_folder()
             // Find parent folder and add file to it
             auto parent_it = folders.find(parent_id);
             if (parent_it != folders.end()) {
-                parent_it->second->add_file(std::move(file));
+                parent_it->second->add_file(file);
             }
 
 #ifdef VERBOSE
@@ -310,11 +310,11 @@ void partition_t::build_root_folder()
 
         if (parent_it != folders.end() && child_it != folders.end())
         {
-            parent_it->second->add_folder(std::unique_ptr<Folder>(child_it->second));
+            parent_it->second->add_folder(child_it->second);
         }
     }
 
-    // All the Folder * should now be owned by their parents folders
+    // All the Folder shared_ptr should now be owned by their parents folders
 }
 
 void partition_t::readCatalogHeader(uint64_t /* catalogExtendStartBlock */)
