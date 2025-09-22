@@ -4,6 +4,9 @@
 #include <vector>
 #include <cstdint>
 
+// Forward declaration
+class Folder;
+
 class File
 {
 	std::string name_;
@@ -12,6 +15,9 @@ class File
 	std::string creator_;
 	uint32_t data_size_;
 	uint32_t rsrc_size_;
+	Folder *parent_;
+
+	friend class Folder;
 
 public:
 	File(const std::string &name, const std::string &type,
@@ -22,6 +28,8 @@ public:
 	const std::string &creator() const { return creator_; }
 	uint32_t data_size() const { return data_size_; }
 	uint32_t rsrc_size() const { return rsrc_size_; }
+	Folder *parent() const { return parent_; }
+	std::vector<std::string> path() const;
 };
 
 class Folder
@@ -30,15 +38,19 @@ class Folder
 	std::string sane_name_;
 	std::vector<std::shared_ptr<File>> files_;
 	std::vector<std::shared_ptr<Folder>> folders_;
+	Folder *parent_;
+
+	friend class Folder;
 
 public:
 	Folder(const std::string &name);
-	void add_file(std::shared_ptr<File> file) { files_.push_back(file); }
-	void add_folder(std::shared_ptr<Folder> folder) { folders_.push_back(folder); }
+	void add_file(std::shared_ptr<File> file);
+	void add_folder(std::shared_ptr<Folder> folder);
 
 	const std::string &name() const { return sane_name_; }
 	const std::vector<std::shared_ptr<File>> &files() const { return files_; }
 	const std::vector<std::shared_ptr<Folder>> &folders() const { return folders_; }
+	Folder *parent() const { return parent_; }
 };
 
 class file_visitor_t
@@ -53,3 +65,6 @@ public:
 };
 
 void visit_folder(std::shared_ptr<Folder> folder, file_visitor_t &visitor);
+
+// Helper function to convert path vector to string
+std::string path_string(const std::vector<std::shared_ptr<Folder>> &path_vector);

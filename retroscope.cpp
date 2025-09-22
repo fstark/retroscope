@@ -1,6 +1,7 @@
 #include "retroscope.h"
 #include "data.h"
 #include "hfs_parser.h"
+#include "file_set.h"
 #include "apm_datasource.h"
 #include "dc42_datasource.h"
 #include "bin_datasource.h"
@@ -17,6 +18,65 @@
 #include <filesystem>
 #include <map>
 #include <tuple>
+#include <tuple>
+
+std::string path_string(const std::vector<std::string> &path)
+{
+    if (path.empty())
+    {
+        return "";
+    }
+    std::string result;
+    for (size_t i = 0; i < path.size(); ++i)
+    {
+        // Skip empty path components
+        if (path[i].empty()) {
+            continue;
+        }
+        if (!result.empty())
+        {
+            result += ":";
+        }
+        result += path[i];
+    }
+    return result;
+}
+
+class find_visitor_t : public file_visitor_t
+{
+    std::string type_;
+    std::string creator_;
+    std::string pattern_;
+    std::vector<std::shared_ptr<File>> found_files_;
+    FileSet *file_set_;
+
+public:
+    find_visitor_t(const std::string &pattern, const std::string &type = "", const std::string &creator = "", FileSet *file_set = nullptr)
+        : type_(type), creator_(creator), pattern_(pattern), file_set_(file_set) {}
+
+    void visit_file(std::shared_ptr<File> file) override
+    {
+        // Apply same filtering logic as terse_visitor
+        if (!type_.empty() && file->type() != type_)
+            return;
+        if (!creator_.empty() && file->creator() != creator_)
+            return;
+        if (!pattern_.empty() && !has_case_insensitive_substring(file->name(), pattern_))
+            return;
+
+        // Store the found file
+        found_files_.push_back(file);
+
+        // Also add to FileSet if provided
+        if (file_set_)
+        {
+            file_set_->add_file(file);
+        }
+    }
+
+    const std::vector<std::shared_ptr<File>> &get_found_files() const { return found_files_; }
+    void clear() { found_files_.clear(); }
+};
 
 class terse_visitor_t : public file_visitor_t
 {
@@ -49,12 +109,14 @@ public:
                   << " DATA: " << file->data_size() << " bytes"
                   << " RSRC: " << file->rsrc_size() << " bytes" << std::endl;
     }
+
     void pre_visit_folder(std::shared_ptr<Folder> folder) override
     {
         std::string indent_str(static_cast<size_t>(indent_ * 2), ' ');
         std::cout << indent_str << "Folder: " << folder->name() << std::endl;
         indent_++;
     }
+
     void post_visit_folder(std::shared_ptr<Folder>) override
     {
         indent_--;
@@ -121,7 +183,7 @@ std::string get_arg<std::string>(const std::map<std::string, std::string> &flags
     return it->second;
 }
 
-void process_disk_image(const std::filesystem::path &filepath)
+void process_disk_image(const std::filesystem::path &filepath, FileSet *file_set = nullptr, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
 {
     // Create initial data source
     auto file_source = std::make_shared<file_data_source_t>(filepath);
@@ -180,9 +242,34 @@ void process_disk_image(const std::filesystem::path &filepath)
             {
                 partition_t partition(source);
                 auto root = partition.get_root_folder();
-                // dump_visitor_t dumper;
-                terse_visitor_t dumper;
-                visit_folder(root, dumper);
+
+                // Keep root folder alive if we're using groups
+                if (root_folders) {
+                    root_folders->push_back(root);
+                }
+
+                // Use find visitor (it will also populate the FileSet if provided)
+                find_visitor_t finder(gFind, gType, gCreator, file_set);
+                visit_folder(root, finder);
+
+                // If not in group mode, print files immediately
+                if (!gGroup)
+                {
+                    // Print the found files in terse format
+                    for (const auto &file : finder.get_found_files())
+                    {
+                        std::string path_str = path_string(file->path());
+                        std::cout << file->name()
+                                  << " (" << file->type() << "/" << file->creator() << ")"
+                                  << " DATA:" << file->data_size() << " bytes"
+                                  << " RSRC:" << file->rsrc_size() << " bytes";
+                        if (!path_str.empty())
+                        {
+                            std::cout << " IN " << path_str;
+                        }
+                        std::cout << std::endl;
+                    }
+                }
             }
             catch (const std::exception &hfs_error)
             {
@@ -194,7 +281,7 @@ void process_disk_image(const std::filesystem::path &filepath)
     }
 }
 
-void process_single_path(const std::filesystem::path &path)
+void process_single_path(const std::filesystem::path &path, FileSet *file_set = nullptr, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
 {
     if (std::filesystem::is_directory(path))
     {
@@ -207,7 +294,7 @@ void process_single_path(const std::filesystem::path &path)
                 {
                     try
                     {
-                        process_disk_image(entry.path());
+                        process_disk_image(entry.path(), file_set, root_folders);
                     }
                     catch (const std::exception &e)
                     {
@@ -224,7 +311,7 @@ void process_single_path(const std::filesystem::path &path)
     }
     else if (std::filesystem::is_regular_file(path))
     {
-        process_disk_image(path);
+        process_disk_image(path, file_set, root_folders);
     }
     else
     {
@@ -235,16 +322,58 @@ void process_single_path(const std::filesystem::path &path)
 
 void process_path(const std::vector<std::filesystem::path> &paths)
 {
+    FileSet file_set;
+    FileSet *file_set_ptr = gGroup ? &file_set : nullptr;
+    
+    // Keep root folders alive to preserve parent relationships
+    std::vector<std::shared_ptr<Folder>> root_folders;
+    
     for (const auto &path : paths)
     {
         try
         {
-            process_single_path(path);
+            process_single_path(path, file_set_ptr, &root_folders);
         }
         catch (const std::exception &e)
         {
             std::cerr << "Error processing " << path << ": " << e.what() << "\n";
             std::cerr << "Continuing with remaining paths...\n";
+        }
+    }    // If in group mode, display the collected groups
+    if (gGroup)
+    {
+        const auto &groups = file_set.get_groups();
+
+        for (const auto &[key, group] : groups)
+        {
+            if (!group)
+                continue; // Safety check
+
+            std::cout << group->name
+                      << " (" << group->type << "/" << group->creator << ")\n";
+
+            // Sort files by total size (data + resource)
+            std::vector<std::shared_ptr<File>> sorted_files = group->files;
+            std::sort(sorted_files.begin(), sorted_files.end(), 
+                [](const std::shared_ptr<File> &a, const std::shared_ptr<File> &b) {
+                    return (a->data_size() + a->rsrc_size()) < (b->data_size() + b->rsrc_size());
+                });
+
+            for (const auto &file : sorted_files)
+            {
+                if (!file)
+                    continue; // Safety check
+
+                std::string path_str = path_string(file->path());
+                std::cout << "  DATA:" << file->data_size() << " bytes"
+                          << " RSRC:" << file->rsrc_size() << " bytes";
+                if (!path_str.empty())
+                {
+                    std::cout << " IN " << path_str;
+                }
+                std::cout << "\n";
+            }
+            std::cout << "\n";
         }
     }
 }
@@ -320,6 +449,7 @@ int main(int argc, char *argv[])
         gCreator = get_arg(flags, "creator", ""s);
         gFind = get_arg(flags, "find", ""s);
         gDump = get_arg(flags, "dump", false);
+        gGroup = get_arg(flags, "group", false);
 
         //  If gType is in the form of "XXXX/XXXX" split into type and creator
         size_t slash_pos = gType.find('/');

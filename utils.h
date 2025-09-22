@@ -5,11 +5,11 @@
 #include <cstdint>
 
 extern bool gVerbose;
-extern bool gTerse;
 extern std::string gType;
 extern std::string gCreator;
 extern std::string gFind;
 extern bool gDump;
+extern bool gGroup;
 
 // Utility function declarations
 std::string string_from_pstring(const uint8_t *pascalStr);
