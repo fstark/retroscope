@@ -19,13 +19,11 @@ Retroscope has been created to become a tool that pull all the info from directo
 
 ## TODO
 
-* Iso CD rom 'bin' images
-* dc42 images
 * MFS support
 
 ## How to use?
 
-For now, it is a simple command line that lists the content of a single file (with one or several partitions on it)
+For now, it is a simple command line that lists the content of a set of files or directories
 
 ```
 $ make
@@ -53,7 +51,7 @@ Folder: /
 ...
 ```
 
-Even in this crude form, it is somewhat useful (ie: ```./retroscope large_image.dsk | grep APPL/``` will give youall the apps on the disk).
+Even in this crude form, it is somewhat useful (ie: ```./retroscope --terse MyDiskCollection | grep APPL/``` will give you all the apps in your collection.
 
 ## Testing
 

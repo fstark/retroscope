@@ -4,6 +4,13 @@
 #include <iomanip>
 #include <format>
 #include <cctype>
+#include <algorithm>
+
+bool gVerbose = false;
+std::string gType = "";
+std::string gCreator = "";
+std::string gFind = "";
+bool gDump = false;
 
 // Convert Pascal string to C++ string
 std::string string_from_pstring(const uint8_t *pascalStr)
@@ -16,22 +23,25 @@ std::string string_from_pstring(const uint8_t *pascalStr)
 // Format type/creator codes as 4-character strings
 std::string string_from_code(uint32_t code)
 {
-    if (code == 0) return "    ";
-    
+    if (code == 0)
+        return "    ";
+
     char chars[5];
     chars[0] = (code >> 24) & 0xFF;
     chars[1] = (code >> 16) & 0xFF;
     chars[2] = (code >> 8) & 0xFF;
     chars[3] = code & 0xFF;
     chars[4] = '\0';
-    
+
     // Replace non-printable characters with '.'
-    for (int i = 0; i < 4; i++) {
-        if (chars[i] < 32 || chars[i] > 126) {
+    for (int i = 0; i < 4; i++)
+    {
+        if (chars[i] < 32 || chars[i] > 126)
+        {
             chars[i] = '.';
         }
     }
-    
+
     return std::string(chars);
 }
 
@@ -44,7 +54,7 @@ std::string from_macroman(const std::string &macroman_str)
         // 0x80-0x8F
         0x00C4, 0x00C5, 0x00C7, 0x00C9, 0x00D1, 0x00D6, 0x00DC, 0x00E1,
         0x00E0, 0x00E2, 0x00E4, 0x00E3, 0x00E5, 0x00E7, 0x00E9, 0x00E8,
-        // 0x90-0x9F  
+        // 0x90-0x9F
         0x00EA, 0x00EB, 0x00ED, 0x00EC, 0x00EE, 0x00EF, 0x00F1, 0x00F3,
         0x00F2, 0x00F4, 0x00F6, 0x00F5, 0x00FA, 0x00F9, 0x00FB, 0x00FC,
         // 0xA0-0xAF
@@ -64,28 +74,36 @@ std::string from_macroman(const std::string &macroman_str)
         0x00CB, 0x00C8, 0x00CD, 0x00CE, 0x00CF, 0x00CC, 0x00D3, 0x00D4,
         // 0xF0-0xFF
         0xF8FF, 0x00D2, 0x00DA, 0x00DB, 0x00D9, 0x0131, 0x02C6, 0x02DC,
-        0x00AF, 0x02D8, 0x02D9, 0x02DA, 0x00B8, 0x02DD, 0x02DB, 0x02C7
-    };
-    
+        0x00AF, 0x02D8, 0x02D9, 0x02DA, 0x00B8, 0x02DD, 0x02DB, 0x02C7};
+
     std::string utf8_result;
     utf8_result.reserve(macroman_str.size() * 2); // Reserve space for potential expansion
-    
-    for (unsigned char c : macroman_str) {
-        if (c < 0x80) {
+
+    for (unsigned char c : macroman_str)
+    {
+        if (c < 0x80)
+        {
             // ASCII range - direct copy
             utf8_result += static_cast<char>(c);
-        } else {
+        }
+        else
+        {
             // Extended MacRoman range - convert to Unicode then to UTF-8
             uint16_t unicode = macroman_to_unicode[c - 0x80];
-            
+
             // Convert Unicode code point to UTF-8
-            if (unicode < 0x80) {
+            if (unicode < 0x80)
+            {
                 utf8_result += static_cast<char>(unicode);
-            } else if (unicode < 0x800) {
+            }
+            else if (unicode < 0x800)
+            {
                 // 2-byte UTF-8 sequence
                 utf8_result += static_cast<char>(0xC0 | (unicode >> 6));
                 utf8_result += static_cast<char>(0x80 | (unicode & 0x3F));
-            } else {
+            }
+            else
+            {
                 // 3-byte UTF-8 sequence (covers Basic Multilingual Plane)
                 utf8_result += static_cast<char>(0xE0 | (unicode >> 12));
                 utf8_result += static_cast<char>(0x80 | ((unicode >> 6) & 0x3F));
@@ -93,7 +111,7 @@ std::string from_macroman(const std::string &macroman_str)
             }
         }
     }
-    
+
     return utf8_result;
 }
 
@@ -105,7 +123,7 @@ void dump(const uint8_t *data, size_t size)
         for (size_t j = 0; j < 16 && i + j < size; j++)
         {
             std::cout << std::hex << std::setw(2) << std::setfill('0')
-                        << static_cast<int>(data[i + j]) << " ";
+                      << static_cast<int>(data[i + j]) << " ";
         }
         std::cout << " ";
         for (size_t j = 0; j < 16 && i + j < size; j++)
@@ -130,10 +148,10 @@ std::string sanitize_string(const std::string &str)
 {
     // First convert from MacRoman to UTF-8
     std::string utf8_str = from_macroman(str);
-    
+
     std::string result;
     result.reserve(utf8_str.size() * 2); // Reserve space to avoid frequent reallocations
-    
+
     for (char c : utf8_str)
     {
         if (c == '\\')
@@ -191,6 +209,21 @@ std::string sanitize_string(const std::string &str)
             result += c; // Regular printable character
         }
     }
-    
+
     return result;
+}
+
+// Check if source string contains substring (case-insensitive)
+bool has_case_insensitive_substring(const std::string &source, const std::string &sub)
+{
+    // Use std::search with case-insensitive comparison
+    auto it = std::search(source.begin(), source.end(),
+                          sub.begin(), sub.end(),
+                          [](char a, char b)
+                          {
+                              return std::tolower(static_cast<unsigned char>(a)) ==
+                                     std::tolower(static_cast<unsigned char>(b));
+                          });
+
+    return it != source.end();
 }
