@@ -60,7 +60,7 @@ public:
 	virtual void pre_visit() {}
 	virtual void post_visit() {}
 	virtual void visit_file(std::shared_ptr<File> file) = 0;
-	virtual void pre_visit_folder(std::shared_ptr<Folder>) {}
+	virtual bool pre_visit_folder(std::shared_ptr<Folder>) { return true; }
 	virtual void post_visit_folder(std::shared_ptr<Folder>) {}
 };
 

@@ -45,16 +45,18 @@ void Folder::add_folder(std::shared_ptr<Folder> folder)
 
 void visit_folder(std::shared_ptr<Folder> folder, file_visitor_t &visitor)
 {
-    visitor.pre_visit_folder(folder);
-    for (const auto &file : folder->files())
+    if (visitor.pre_visit_folder(folder))
     {
-        visitor.visit_file(file);
+        for (const auto &file : folder->files())
+        {
+            visitor.visit_file(file);
+        }
+        for (const auto &subfolder : folder->folders())
+        {
+            visit_folder(subfolder, visitor);
+        }
+        visitor.post_visit_folder(folder);
     }
-    for (const auto &subfolder : folder->folders())
-    {
-        visit_folder(subfolder, visitor);
-    }
-    visitor.post_visit_folder(folder);
 }
 
 std::string path_string(const std::vector<std::shared_ptr<Folder>> &path_vector)

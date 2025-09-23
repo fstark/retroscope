@@ -43,36 +43,96 @@ std::string path_string(const std::vector<std::string> &path)
     return result;
 }
 
-class find_visitor_t : public file_visitor_t
+class filter_t
 {
-    std::string type_;
-    std::string creator_;
-    std::string pattern_;
-    std::vector<std::shared_ptr<File>> found_files_;
-    FileSet *file_set_;
+public:
+    virtual ~filter_t() = default;
+    virtual bool matches(const File &) = 0;
+    virtual bool matches(const Folder &) { return false; }
+};
+
+class filter_visitor_t : public file_visitor_t
+{
+    std::shared_ptr<file_visitor_t> next_;
+    std::vector<std::shared_ptr<filter_t>> filters_;
 
 public:
-    find_visitor_t(const std::string &pattern, const std::string &type = "", const std::string &creator = "", FileSet *file_set = nullptr)
-        : type_(type), creator_(creator), pattern_(pattern), file_set_(file_set) {}
+    filter_visitor_t(std::shared_ptr<file_visitor_t> next, std::vector<std::shared_ptr<filter_t>> &filters) : next_(next),
+                                                                                                              filters_(filters)
+    {
+    }
 
     void visit_file(std::shared_ptr<File> file) override
     {
-        // Apply same filtering logic as terse_visitor
-        if (!type_.empty() && file->type() != type_)
-            return;
-        if (!creator_.empty() && file->creator() != creator_)
-            return;
-        if (!pattern_.empty() && !has_case_insensitive_substring(file->name(), pattern_))
-            return;
-
-        // Store the found file
-        found_files_.push_back(file);
-
-        // Also add to FileSet if provided
-        if (file_set_)
+        for (const auto &filter : filters_)
         {
-            file_set_->add_file(file);
+            if (!filter->matches(*file))
+            {
+                return;
+            }
         }
+        next_->visit_file(file);
+    }
+
+    bool pre_visit_folder(std::shared_ptr<Folder> folder) override
+    {
+        for (const auto &filter : filters_)
+        {
+            if (!filter->matches(*folder))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+};
+
+class name_filter_t : public filter_t
+{
+    std::string pattern_;
+
+public:
+    name_filter_t(const std::string &pattern) : pattern_(pattern) {}
+    bool matches(const File &file) override
+    {
+        return has_case_insensitive_substring(file.name(), pattern_);
+    }
+};
+
+class type_filter_t : public filter_t
+{
+    std::string type_;
+
+public:
+    type_filter_t(const std::string &type) : type_(type) {}
+    bool matches(const File &file) override
+    {
+        return file.type() == type_;
+    }
+};
+
+class creator_filter_t : public filter_t
+{
+    std::string creator_;
+
+public:
+    creator_filter_t(const std::string &creator) : creator_(creator) {}
+    bool matches(const File &file) override
+    {
+        return file.creator() == creator_;
+    }
+};
+
+class file_accumulator_t : public file_visitor_t
+{
+    std::vector<std::shared_ptr<File>> found_files_;
+
+public:
+    file_accumulator_t() {}
+
+    void visit_file(std::shared_ptr<File> file) override
+    {
+        found_files_.push_back(file);
     }
 
     const std::vector<std::shared_ptr<File>> &get_found_files() const { return found_files_; }
@@ -111,11 +171,12 @@ public:
                   << " RSRC: " << file->rsrc_size() << " bytes" << std::endl;
     }
 
-    void pre_visit_folder(std::shared_ptr<Folder> folder) override
+    bool pre_visit_folder(std::shared_ptr<Folder> folder) override
     {
         std::string indent_str(static_cast<size_t>(indent_ * 2), ' ');
         std::cout << indent_str << "Folder: " << folder->name() << std::endl;
         indent_++;
+        return true;
     }
 
     void post_visit_folder(std::shared_ptr<Folder>) override
@@ -184,15 +245,9 @@ std::string get_arg<std::string>(const std::map<std::string, std::string> &flags
     return it->second;
 }
 
-void process_disk_image(const std::filesystem::path &filepath, FileSet *file_set = nullptr, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
+//
+std::vector<std::shared_ptr<data_source_t>> expand_source(const std::shared_ptr<file_data_source_t> file_source)
 {
-    // Create initial data source
-    auto file_source = std::make_shared<file_data_source_t>(filepath);
-#ifdef VERBOSE
-    std::cout << "Analyzing disk image: " << filepath << " (" << file_source->size() << " bytes)\n";
-#endif
-
-    // Start with the file itself
     std::vector<std::shared_ptr<data_source_t>> sources = {file_source};
 
     // Process all sources, expanding them if they contain sub-partitions
@@ -229,8 +284,18 @@ void process_disk_image(const std::filesystem::path &filepath, FileSet *file_set
             }
         }
     }
+    return sources;
+}
 
-    // Now check each source for HFS and parse if found
+void process_disk_image(const std::filesystem::path &filepath, file_visitor_t &visitor, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
+{
+    // Create initial data source
+    auto file_source = std::make_shared<file_data_source_t>(filepath);
+#ifdef VERBOSE
+    std::cout << "Analyzing disk image: " << filepath << " (" << file_source->size() << " bytes)\n";
+#endif
+
+    auto sources = expand_source(file_source);
     for (auto &source : sources)
     {
         if (is_hfs(source))
@@ -250,28 +315,7 @@ void process_disk_image(const std::filesystem::path &filepath, FileSet *file_set
                     root_folders->push_back(root);
                 }
 
-                // Use find visitor (it will also populate the FileSet if provided)
-                find_visitor_t finder(gFind, gType, gCreator, file_set);
-                visit_folder(root, finder);
-
-                // If not in group mode, print files immediately
-                if (!gGroup)
-                {
-                    // Print the found files in terse format
-                    for (const auto &file : finder.get_found_files())
-                    {
-                        std::string path_str = path_string(file->path());
-                        std::cout << file->name()
-                                  << " (" << file->type() << "/" << file->creator() << ")"
-                                  << " DATA:" << file->data_size() << " bytes"
-                                  << " RSRC:" << file->rsrc_size() << " bytes";
-                        if (!path_str.empty())
-                        {
-                            std::cout << " IN " << path_str;
-                        }
-                        std::cout << std::endl;
-                    }
-                }
+                visit_folder(root, visitor);
             }
             catch (const std::exception &hfs_error)
             {
@@ -283,7 +327,7 @@ void process_disk_image(const std::filesystem::path &filepath, FileSet *file_set
     }
 }
 
-void process_single_path(const std::filesystem::path &path, FileSet *file_set = nullptr, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
+void process_single_path(const std::filesystem::path &path, file_visitor_t &visitor, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
 {
     if (std::filesystem::is_directory(path))
     {
@@ -292,18 +336,7 @@ void process_single_path(const std::filesystem::path &path, FileSet *file_set = 
         {
             for (const auto &entry : std::filesystem::recursive_directory_iterator(path))
             {
-                if (entry.is_regular_file())
-                {
-                    try
-                    {
-                        process_disk_image(entry.path(), file_set, root_folders);
-                    }
-                    catch (const std::exception &e)
-                    {
-                        std::cerr << "Error processing file " << entry.path() << ": " << e.what() << "\n";
-                        std::cerr << "Continuing with other files...\n";
-                    }
-                }
+                process_single_path(entry.path(), visitor, root_folders);
             }
         }
         catch (const std::filesystem::filesystem_error &e)
@@ -313,7 +346,7 @@ void process_single_path(const std::filesystem::path &path, FileSet *file_set = 
     }
     else if (std::filesystem::is_regular_file(path))
     {
-        process_disk_image(path, file_set, root_folders);
+        process_disk_image(path, visitor, root_folders);
     }
     else
     {
@@ -322,62 +355,63 @@ void process_single_path(const std::filesystem::path &path, FileSet *file_set = 
     }
 }
 
-void process_path(const std::vector<std::filesystem::path> &paths)
+std::string string_from_sizes(uint32_t min, uint32_t max)
 {
-    FileSet file_set;
-    FileSet *file_set_ptr = gGroup ? &file_set : nullptr;
+    if (min == max)
+        return std::format("{}", min);
+    return std::format("{} to {}", min, max);
+}
+std::string string_from_fork_sizes(uint32_t dmin, uint32_t dmax, uint32_t rmin, uint32_t rmax)
+{
+    if (dmin + dmax + rmin + rmax == 0)
+        return "(empty file)";
 
-    // Keep root folders alive to preserve parent relationships
-    std::vector<std::shared_ptr<Folder>> root_folders;
+    if (rmin + rmax == 0)
+        return std::format(" (DATA: {} bytes)", string_from_sizes(dmin, dmax));
 
+    if (dmin + dmax == 0)
+        return std::format(" (RSRC: {} bytes)", string_from_sizes(rmin, rmax));
+
+    return std::format("  (DATA: {} bytes, RSRC: {} bytes)",
+                       string_from_sizes(dmin, dmax),
+                       string_from_sizes(rmin, rmax));
+}
+
+void process_group(const FileSet::FileGroup &group)
+{
+    // Sort files by total size (data + resource)
+    std::vector<std::shared_ptr<File>> files = group.files;
+    // std::sort(files.begin(), files.end(),
+    //           [](const std::shared_ptr<File> &a, const std::shared_ptr<File> &b)
+    //           {
+    //               return (a->data_size() + a->rsrc_size()) < (b->data_size() + b->rsrc_size());
+    //           });
+
+    // TODO: to be rewritten with algorithm
+    uint32_t min_data_size = 0xffffffff; // should be max
+    uint32_t min_rsrc_size = 0xffffffff; // should be max
+    uint32_t max_data_size = 0;
+    uint32_t max_rsrc_size = 0;
+
+    for (auto &file : files)
+    {
+        assert(file);
+        min_data_size = std::min(min_data_size, file->data_size());
+        min_rsrc_size = std::min(min_rsrc_size, file->rsrc_size());
+        max_data_size = std::max(max_data_size, file->data_size());
+        max_rsrc_size = std::max(max_rsrc_size, file->rsrc_size());
+    }
+
+    // END TODO
+
+    std::cout << string_from_fork_sizes(min_data_size, max_data_size, min_rsrc_size, max_rsrc_size) << std::endl;
+}
+
+void process_path(const std::vector<std::filesystem::path> &paths, file_visitor_t &visitor, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
+{
     for (const auto &path : paths)
     {
-        try
-        {
-            process_single_path(path, file_set_ptr, &root_folders);
-        }
-        catch (const std::exception &e)
-        {
-            std::cerr << "Error processing " << path << ": " << e.what() << "\n";
-            std::cerr << "Continuing with remaining paths...\n";
-        }
-    } // If in group mode, display the collected groups
-    if (gGroup)
-    {
-        const auto &groups = file_set.get_groups();
-
-        for (const auto &[key, group] : groups)
-        {
-            if (!group)
-                continue; // Safety check
-
-            std::cout << group->name
-                      << " (" << group->type << "/" << group->creator << ")\n";
-
-            // Sort files by total size (data + resource)
-            std::vector<std::shared_ptr<File>> sorted_files = group->files;
-            std::sort(sorted_files.begin(), sorted_files.end(),
-                      [](const std::shared_ptr<File> &a, const std::shared_ptr<File> &b)
-                      {
-                          return (a->data_size() + a->rsrc_size()) < (b->data_size() + b->rsrc_size());
-                      });
-
-            for (const auto &file : sorted_files)
-            {
-                if (!file)
-                    continue; // Safety check
-
-                std::string path_str = path_string(file->path());
-                std::cout << "  DATA:" << file->data_size() << " bytes"
-                          << " RSRC:" << file->rsrc_size() << " bytes";
-                if (!path_str.empty())
-                {
-                    std::cout << " IN " << path_str;
-                }
-                std::cout << "\n";
-            }
-            std::cout << "\n";
-        }
+        process_single_path(path, visitor, root_folders);
     }
 }
 
@@ -462,8 +496,34 @@ int main(int argc, char *argv[])
             gCreator = gType.substr(slash_pos + 1);
         }
 
+        std::vector<std::shared_ptr<filter_t>> filters;
+        if (!gFind.empty())
+        {
+            filters.push_back(std::make_shared<name_filter_t>(gFind));
+        }
+        if (!gType.empty())
+        {
+            filters.push_back(std::make_shared<type_filter_t>(gType));
+        }
+        if (!gCreator.empty())
+        {
+            filters.push_back(std::make_shared<creator_filter_t>(gCreator));
+        }
+
+        std::shared_ptr<file_accumulator_t> accumulator;
+        accumulator = std::make_shared<file_accumulator_t>();
+
+        filter_visitor_t visitor{accumulator, filters};
+
         // Process all paths
-        process_path(paths);
+        // Keep root folders alive to preserve parent relationships
+        std::vector<std::shared_ptr<Folder>> root_folders;
+        process_path(paths, visitor, &root_folders);
+
+        for (auto &file : accumulator->get_found_files())
+        {
+            std::cout << "Found file: " << file->name() << "\n";
+        }
     }
     catch (const std::exception &e)
     {
