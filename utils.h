@@ -7,7 +7,7 @@
 extern bool gVerbose;
 extern std::string gType;
 extern std::string gCreator;
-extern std::string gFind;
+extern std::string gName;
 extern bool gDump;
 extern bool gGroup;
 

@@ -53,6 +53,7 @@ std::string short_sring_from_file(const File &file)
                        file.name(), file.type(), file.creator());
 }
 
+// Canonical way to describe a file
 std::string string_from_file(const File &file)
 {
     return std::format("{} {}",
@@ -60,6 +61,7 @@ std::string string_from_file(const File &file)
                        string_from_fork_sizes(file.data_size(), file.rsrc_size()));
 }
 
+// Canonical way to describe a group of files
 std::string string_from_group(const FileSet::FileGroup &group)
 {
     // Sort files by total size (data + resource)
@@ -93,29 +95,6 @@ std::string string_from_group(const FileSet::FileGroup &group)
                        group.creator,
                        group.files.size(),
                        string_from_fork_sizes(min_data_size, max_data_size, min_rsrc_size, max_rsrc_size));
-}
-
-std::string path_string(const std::vector<std::string> &path)
-{
-    if (path.empty())
-    {
-        return "";
-    }
-    std::string result;
-    for (size_t i = 0; i < path.size(); ++i)
-    {
-        // Skip empty path components
-        if (path[i].empty())
-        {
-            continue;
-        }
-        if (!result.empty())
-        {
-            result += ":";
-        }
-        result += path[i];
-    }
-    return result;
 }
 
 class filter_t
@@ -214,21 +193,12 @@ public:
     void clear() { found_files_.clear(); }
 };
 
-class terse_visitor_t : public file_visitor_t
+class file_printer_t : public file_visitor_t
 {
 public:
     void visit_file(std::shared_ptr<File> file) override
     {
-        if (gType != "" && file->type() != gType)
-            return;
-        if (gCreator != "" && file->creator() != gCreator)
-            return;
-        if (gFind != "" && !has_case_insensitive_substring(file->name(), gFind))
-            return;
-        std::cout << file->name()
-                  << " (" << file->type() << "/" << file->creator() << ")"
-                  << " DATA:" << file->data_size() << " bytes"
-                  << " RSRC:" << file->rsrc_size() << " bytes" << std::endl;
+        std::cout << string_from_file(*file) << std::endl;
     }
 };
 
@@ -503,11 +473,9 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        gVerbose = get_arg(flags, "verbose", false);
         gType = get_arg(flags, "type", ""s);
         gCreator = get_arg(flags, "creator", ""s);
-        gFind = get_arg(flags, "find", ""s);
-        gDump = get_arg(flags, "dump", false);
+        gName = get_arg(flags, "name", ""s);
         gGroup = get_arg(flags, "group", false);
 
         //  If gType is in the form of "XXXX/XXXX" split into type and creator
@@ -519,9 +487,9 @@ int main(int argc, char *argv[])
         }
 
         std::vector<std::shared_ptr<filter_t>> filters;
-        if (!gFind.empty())
+        if (!gName.empty())
         {
-            filters.push_back(std::make_shared<name_filter_t>(gFind));
+            filters.push_back(std::make_shared<name_filter_t>(gName));
         }
         if (!gType.empty())
         {
@@ -532,23 +500,26 @@ int main(int argc, char *argv[])
             filters.push_back(std::make_shared<creator_filter_t>(gCreator));
         }
 
-        std::shared_ptr<file_accumulator_t> accumulator;
-        accumulator = std::make_shared<file_accumulator_t>();
-
-        filter_visitor_t visitor{accumulator, filters};
-
-        // Process all paths
-        // Keep root folders alive to preserve parent relationships
-        std::vector<std::shared_ptr<Folder>> root_folders;
-        process_path(paths, visitor, &root_folders);
-
         if (!gGroup)
-            for (auto &file : accumulator->get_found_files())
-            {
-                std::cout << string_from_file(*file) << "\n";
-            }
+        {
+            std::shared_ptr<file_visitor_t> printer;
+            printer = std::make_shared<file_printer_t>();
+            filter_visitor_t visitor{printer, filters};
+
+            std::vector<std::shared_ptr<Folder>> root_folders;
+            process_path(paths, visitor, &root_folders);
+        }
         else
         {
+            std::shared_ptr<file_accumulator_t> accumulator;
+            accumulator = std::make_shared<file_accumulator_t>();
+
+            filter_visitor_t visitor{accumulator, filters};
+
+            // Process all paths
+            std::vector<std::shared_ptr<Folder>> root_folders;
+            process_path(paths, visitor, &root_folders);
+
             FileSet file_set;
             for (auto &file : accumulator->get_found_files())
             {

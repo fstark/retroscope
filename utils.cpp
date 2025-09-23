@@ -9,8 +9,7 @@
 bool gVerbose = false;
 std::string gType = "";
 std::string gCreator = "";
-std::string gFind = "";
-bool gDump = false;
+std::string gName = "";
 bool gGroup = false;
 
 // Convert Pascal string to C++ string
