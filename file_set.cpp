@@ -16,7 +16,6 @@ void FileSet::add_file(std::shared_ptr<File> file)
     }
 
     // Debug: Log the file path when adding to FileSet
-    
 
     std::string key = make_key(file->name(), file->type(), file->creator());
 

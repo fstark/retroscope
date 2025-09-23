@@ -30,7 +30,8 @@ std::string path_string(const std::vector<std::string> &path)
     for (size_t i = 0; i < path.size(); ++i)
     {
         // Skip empty path components
-        if (path[i].empty()) {
+        if (path[i].empty())
+        {
             continue;
         }
         if (!result.empty())
@@ -244,7 +245,8 @@ void process_disk_image(const std::filesystem::path &filepath, FileSet *file_set
                 auto root = partition.get_root_folder();
 
                 // Keep root folder alive if we're using groups
-                if (root_folders) {
+                if (root_folders)
+                {
                     root_folders->push_back(root);
                 }
 
@@ -324,10 +326,10 @@ void process_path(const std::vector<std::filesystem::path> &paths)
 {
     FileSet file_set;
     FileSet *file_set_ptr = gGroup ? &file_set : nullptr;
-    
+
     // Keep root folders alive to preserve parent relationships
     std::vector<std::shared_ptr<Folder>> root_folders;
-    
+
     for (const auto &path : paths)
     {
         try
@@ -339,7 +341,7 @@ void process_path(const std::vector<std::filesystem::path> &paths)
             std::cerr << "Error processing " << path << ": " << e.what() << "\n";
             std::cerr << "Continuing with remaining paths...\n";
         }
-    }    // If in group mode, display the collected groups
+    } // If in group mode, display the collected groups
     if (gGroup)
     {
         const auto &groups = file_set.get_groups();
@@ -354,10 +356,11 @@ void process_path(const std::vector<std::filesystem::path> &paths)
 
             // Sort files by total size (data + resource)
             std::vector<std::shared_ptr<File>> sorted_files = group->files;
-            std::sort(sorted_files.begin(), sorted_files.end(), 
-                [](const std::shared_ptr<File> &a, const std::shared_ptr<File> &b) {
-                    return (a->data_size() + a->rsrc_size()) < (b->data_size() + b->rsrc_size());
-                });
+            std::sort(sorted_files.begin(), sorted_files.end(),
+                      [](const std::shared_ptr<File> &a, const std::shared_ptr<File> &b)
+                      {
+                          return (a->data_size() + a->rsrc_size()) < (b->data_size() + b->rsrc_size());
+                      });
 
             for (const auto &file : sorted_files)
             {
