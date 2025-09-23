@@ -20,6 +20,81 @@
 #include <tuple>
 #include <tuple>
 
+std::string string_from_sizes(uint32_t min, uint32_t max)
+{
+    if (min == max)
+        return std::format("{}", min);
+    return std::format("{} to {}", min, max);
+}
+std::string string_from_fork_sizes(uint32_t dmin, uint32_t dmax, uint32_t rmin, uint32_t rmax)
+{
+    if (dmin + dmax + rmin + rmax == 0)
+        return "(empty file)";
+
+    if (rmin + rmax == 0)
+        return std::format("(DATA: {} bytes)", string_from_sizes(dmin, dmax));
+
+    if (dmin + dmax == 0)
+        return std::format("(RSRC: {} bytes)", string_from_sizes(rmin, rmax));
+
+    return std::format("(DATA: {} bytes, RSRC: {} bytes)",
+                       string_from_sizes(dmin, dmax),
+                       string_from_sizes(rmin, rmax));
+}
+
+std::string string_from_fork_sizes(uint32_t data_size, uint32_t rsrc_size)
+{
+    return string_from_fork_sizes(data_size, data_size, rsrc_size, rsrc_size);
+}
+
+std::string short_sring_from_file(const File &file)
+{
+    return std::format("{} {}/{}",
+                       file.name(), file.type(), file.creator());
+}
+
+std::string string_from_file(const File &file)
+{
+    return std::format("{} {}",
+                       short_sring_from_file(file),
+                       string_from_fork_sizes(file.data_size(), file.rsrc_size()));
+}
+
+std::string string_from_group(const FileSet::FileGroup &group)
+{
+    // Sort files by total size (data + resource)
+    std::vector<std::shared_ptr<File>> files = group.files;
+    // std::sort(files.begin(), files.end(),
+    //           [](const std::shared_ptr<File> &a, const std::shared_ptr<File> &b)
+    //           {
+    //               return (a->data_size() + a->rsrc_size()) < (b->data_size() + b->rsrc_size());
+    //           });
+
+    // TODO: to be rewritten with algorithm
+    uint32_t min_data_size = 0xffffffff; // should be max
+    uint32_t min_rsrc_size = 0xffffffff; // should be max
+    uint32_t max_data_size = 0;
+    uint32_t max_rsrc_size = 0;
+
+    for (auto &file : files)
+    {
+        assert(file);
+        min_data_size = std::min(min_data_size, file->data_size());
+        min_rsrc_size = std::min(min_rsrc_size, file->rsrc_size());
+        max_data_size = std::max(max_data_size, file->data_size());
+        max_rsrc_size = std::max(max_rsrc_size, file->rsrc_size());
+    }
+
+    // END TODO
+
+    return std::format("{} {}/{} {} occurences {}",
+                       group.name,
+                       group.type,
+                       group.creator,
+                       group.files.size(),
+                       string_from_fork_sizes(min_data_size, max_data_size, min_rsrc_size, max_rsrc_size));
+}
+
 std::string path_string(const std::vector<std::string> &path)
 {
     if (path.empty())
@@ -48,7 +123,7 @@ class filter_t
 public:
     virtual ~filter_t() = default;
     virtual bool matches(const File &) = 0;
-    virtual bool matches(const Folder &) { return false; }
+    virtual bool matches(const Folder &) { return true; }
 };
 
 class filter_visitor_t : public file_visitor_t
@@ -331,7 +406,6 @@ void process_single_path(const std::filesystem::path &path, file_visitor_t &visi
 {
     if (std::filesystem::is_directory(path))
     {
-        std::cout << "Processing directory: " << path << "\n";
         try
         {
             for (const auto &entry : std::filesystem::recursive_directory_iterator(path))
@@ -353,58 +427,6 @@ void process_single_path(const std::filesystem::path &path, file_visitor_t &visi
         std::cerr << "Error: " << path << " is not a regular file or directory\n";
         throw std::runtime_error("Invalid path type");
     }
-}
-
-std::string string_from_sizes(uint32_t min, uint32_t max)
-{
-    if (min == max)
-        return std::format("{}", min);
-    return std::format("{} to {}", min, max);
-}
-std::string string_from_fork_sizes(uint32_t dmin, uint32_t dmax, uint32_t rmin, uint32_t rmax)
-{
-    if (dmin + dmax + rmin + rmax == 0)
-        return "(empty file)";
-
-    if (rmin + rmax == 0)
-        return std::format(" (DATA: {} bytes)", string_from_sizes(dmin, dmax));
-
-    if (dmin + dmax == 0)
-        return std::format(" (RSRC: {} bytes)", string_from_sizes(rmin, rmax));
-
-    return std::format("  (DATA: {} bytes, RSRC: {} bytes)",
-                       string_from_sizes(dmin, dmax),
-                       string_from_sizes(rmin, rmax));
-}
-
-void process_group(const FileSet::FileGroup &group)
-{
-    // Sort files by total size (data + resource)
-    std::vector<std::shared_ptr<File>> files = group.files;
-    // std::sort(files.begin(), files.end(),
-    //           [](const std::shared_ptr<File> &a, const std::shared_ptr<File> &b)
-    //           {
-    //               return (a->data_size() + a->rsrc_size()) < (b->data_size() + b->rsrc_size());
-    //           });
-
-    // TODO: to be rewritten with algorithm
-    uint32_t min_data_size = 0xffffffff; // should be max
-    uint32_t min_rsrc_size = 0xffffffff; // should be max
-    uint32_t max_data_size = 0;
-    uint32_t max_rsrc_size = 0;
-
-    for (auto &file : files)
-    {
-        assert(file);
-        min_data_size = std::min(min_data_size, file->data_size());
-        min_rsrc_size = std::min(min_rsrc_size, file->rsrc_size());
-        max_data_size = std::max(max_data_size, file->data_size());
-        max_rsrc_size = std::max(max_rsrc_size, file->rsrc_size());
-    }
-
-    // END TODO
-
-    std::cout << string_from_fork_sizes(min_data_size, max_data_size, min_rsrc_size, max_rsrc_size) << std::endl;
 }
 
 void process_path(const std::vector<std::filesystem::path> &paths, file_visitor_t &visitor, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
@@ -520,9 +542,23 @@ int main(int argc, char *argv[])
         std::vector<std::shared_ptr<Folder>> root_folders;
         process_path(paths, visitor, &root_folders);
 
-        for (auto &file : accumulator->get_found_files())
+        if (!gGroup)
+            for (auto &file : accumulator->get_found_files())
+            {
+                std::cout << string_from_file(*file) << "\n";
+            }
+        else
         {
-            std::cout << "Found file: " << file->name() << "\n";
+            FileSet file_set;
+            for (auto &file : accumulator->get_found_files())
+            {
+                file_set.add_file(file);
+            }
+            std::cout << "Found " << file_set.group_count() << " groups with a total of " << file_set.file_count() << " files.\n";
+            for (const auto &[key, group] : file_set.get_groups())
+            {
+                std::cout << string_from_group(*group) << std::endl;
+            }
         }
     }
     catch (const std::exception &e)
