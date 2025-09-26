@@ -6,6 +6,8 @@
 #include <format>
 #include <iostream>
 
+#define noDEBUG_MEMORY
+
 extern std::string gType;
 extern std::string gCreator;
 extern std::string gName;

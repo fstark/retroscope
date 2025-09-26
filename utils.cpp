@@ -145,13 +145,10 @@ void dump(const std::vector<uint8_t> &data)
 // Sanitize string by replacing control characters with escape codes and doubling backslashes
 std::string sanitize_string(const std::string &str)
 {
-    // First convert from MacRoman to UTF-8
-    std::string utf8_str = from_macroman(str);
-
     std::string result;
-    result.reserve(utf8_str.size() * 2); // Reserve space to avoid frequent reallocations
+    result.reserve(str.size() * 2); // Reserve space to avoid frequent reallocations
 
-    for (char c : utf8_str)
+    for (char c : str)
     {
         if (c == '\\')
         {

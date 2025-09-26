@@ -1,6 +1,7 @@
 #include "retroscope.h"
 #include "data.h"
 #include "hfs_parser.h"
+#include "mfs_parser.h"
 #include "file_set.h"
 #include "apm_datasource.h"
 #include "dc42_datasource.h"
@@ -422,6 +423,21 @@ void process_disk_image(const std::filesystem::path &filepath, file_visitor_t &v
             {
                 std::cerr << "In disk image: " << filepath << " (" << file_source->size() << " bytes)\n";
                 std::cerr << "Error parsing HFS partition: " << hfs_error.what() << "\n";
+                std::cerr << "Continuing with other partitions...\n";
+            }
+        }
+        else if (is_mfs(source))
+        {
+            rs_log("Found MFS partition");
+            try
+            {
+                mfs_partition_t partition(source);
+                partition.scan_partition(visitor);
+            }
+            catch (const std::exception &mfs_error)
+            {
+                std::cerr << "In disk image: " << filepath << " (" << file_source->size() << " bytes)\n";
+                std::cerr << "Error parsing MFS partition: " << mfs_error.what() << "\n";
                 std::cerr << "Continuing with other partitions...\n";
             }
         }

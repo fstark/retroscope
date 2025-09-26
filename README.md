@@ -19,7 +19,7 @@ Retroscope has been created to become a tool that pull all the info from directo
 
 ## TODO
 
-* MFS support
+* Folder path printed incorrectly, missing file component
 
 ## How to use?
 

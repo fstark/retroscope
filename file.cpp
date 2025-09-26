@@ -6,24 +6,26 @@
 
 #define noVERBOSE
 
+#ifdef DEBUG_MEMORY
 static int sFileCount = 0;
+#endif
 
 File::File(const std::shared_ptr<Disk> &disk, const std::string &name, const std::string &type,
            const std::string &creator, uint32_t data_size, uint32_t rsrc_size)
     : disk_(disk), name_(name), sane_name_(sanitize_string(name)), type_(type), creator_(creator),
       data_size_(data_size), rsrc_size_(rsrc_size), parent_(nullptr)
 {
+#ifdef DEBUG_MEMORY
     sFileCount++;
-#ifdef VERBOSE
-    std::cout << "**** Creating File: " << name_ << " (Total files: " << sFileCount << ")\n";
 #endif
 }
 
 File::~File()
 {
+#ifdef DEBUG_MEMORY
     sFileCount--;
-#ifdef VERBOSE
-    std::cout << "**** Destroying File: " << name_ << " (Remaining files: " << sFileCount << ")\n";
+    if (sFileCount==0)
+        std::cout << std::format("**** All File deleted\n");
 #endif
 }
 
@@ -51,21 +53,23 @@ std::vector<std::shared_ptr<Folder>> File::retained_path() const
     return result;
 }
 
+#ifdef DEBUG_MEMORY
 static int sFolderCount = 0;
+#endif
 
 Folder::Folder(const std::string &name) : name_(name), sane_name_(sanitize_string(name)), parent_(nullptr)
 {
+#ifdef DEBUG_MEMORY
     sFolderCount++;
-#ifdef VERBOSE
-    std::cout << "**** Creating Folder: " << name_ << " (Total folders: " << sFolderCount << ")\n";
 #endif
 }
 
 Folder::~Folder()
 {
+#ifdef DEBUG_MEMORY
     sFolderCount--;
-#ifdef VERBOSE
-    std::cout << "**** Destroying Folder: " << name_ << " (Remaining folders: " << sFolderCount << ")\n";
+    if (sFolderCount==0)
+        std::cout << std::format("**** All Folder deleted\n");
 #endif
 }
 

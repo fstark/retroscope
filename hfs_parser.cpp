@@ -187,7 +187,7 @@ void partition_t::build_root_folder()
         throw std::runtime_error("Not an HFS volume");
     }
 
-    auto disk = std::make_shared<Disk>(mdb.getVolumeName(), data_source_->description());
+    auto disk = std::make_shared<Disk>(from_macroman(mdb.getVolumeName()), data_source_->description());
 
     // std::cout << std::format("\n\n\n\nHFS Volume: {} (Disk: {})\n", mdb.getVolumeName(), data_source_->description());
 
@@ -248,7 +248,7 @@ void partition_t::build_root_folder()
     auto catalog_btree = catalog_.as_btree_file();
 
     // Root folder has ID 2
-    root_folder = std::make_shared<Folder>(mdb.getVolumeName());
+    root_folder = std::make_shared<Folder>(from_macroman(mdb.getVolumeName()));
     folders[2] = root_folder;
 
     std::vector<hierarchy_t> hierarchy;
@@ -268,7 +268,7 @@ void partition_t::build_root_folder()
 
         if (folder_record) {
             // This is a folder
-            auto folder = std::make_shared<Folder>(catalog_record->name());
+            auto folder = std::make_shared<Folder>(from_macroman(catalog_record->name()));
             auto folder_id = folder_record->folder_id();
             folders[folder_id] = folder;
             
@@ -283,7 +283,7 @@ void partition_t::build_root_folder()
             // This is a file
             std::shared_ptr<File> file = std::make_shared<File>(
                 disk,
-                catalog_record->name(),
+                from_macroman(catalog_record->name()),
                 file_record->type(),
                 file_record->creator(),
                 file_record->dataLogicalSize(),
