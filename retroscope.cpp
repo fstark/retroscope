@@ -20,6 +20,13 @@
 #include <tuple>
 #include <tuple>
 
+#define noVERBOSE
+#ifndef VERBOSE
+#undef ENTRY
+#define ENTRY(...)
+#define rs_log(...)
+#endif
+
 std::string string_from_sizes(uint32_t min, uint32_t max)
 {
     if (min == max)
@@ -59,6 +66,37 @@ std::string string_from_file(const File &file)
     return std::format("{} {}",
                        short_sring_from_file(file),
                        string_from_fork_sizes(file.data_size(), file.rsrc_size()));
+}
+
+std::string string_from_path(const std::vector<std::shared_ptr<Folder>> &path_vector)
+{
+    if (path_vector.empty())
+    {
+        return "";
+    }
+
+    //  Copy and reverse the path to get root:first
+    std::vector<std::shared_ptr<Folder>> reversed_path(path_vector.rbegin(), path_vector.rend());
+
+    std::string result;
+    for (size_t i = 0; i < reversed_path.size(); ++i)
+    {
+        if (i > 0)
+        {
+            result += ":";
+        }
+        result += reversed_path[i]->name();
+    }
+    return result;
+}
+
+std::string string_from_disk(const std::shared_ptr<Disk> &disk)
+{
+    if (!disk)
+    {
+        return "(no disk)";
+    }
+    return std::format("{} in {}", disk->name(), disk->path());
 }
 
 // Canonical way to describe a group of files
@@ -125,6 +163,12 @@ public:
                 return;
             }
         }
+        // std::cout << std::format(" - .Keeping: {:p} {:p} {} {}\n",
+        //                          (void *)this,
+        //                          (void *)file.get(),
+        //                          string_from_disk(file->disk()),
+        //                          string_from_file(*file));
+
         next_->visit_file(file);
     }
 
@@ -187,6 +231,7 @@ public:
     void visit_file(std::shared_ptr<File> file) override
     {
         found_files_.push_back(file);
+        file->retain_folder();
     }
 
     const std::vector<std::shared_ptr<File>> &get_found_files() const { return found_files_; }
@@ -290,77 +335,88 @@ std::string get_arg<std::string>(const std::map<std::string, std::string> &flags
     return it->second;
 }
 
-//
-std::vector<std::shared_ptr<data_source_t>> expand_source(const std::shared_ptr<file_data_source_t> file_source)
+bool replace_source(const std::shared_ptr<data_source_t> source, std::vector<std::shared_ptr<data_source_t>> &result)
+{
+    // Try BIN unwrapping (CD-ROM format)
+    auto bin_source = make_bin_data_source(source);
+    if (bin_source != source)
+    {
+        result.push_back(bin_source);
+        return true;
+    }
+
+    // Try DC42 unwrapping
+    auto dc42_source = make_dc42_data_source(source);
+    if (dc42_source != source)
+    {
+        result.push_back(dc42_source);
+        return true;
+    }
+
+    // Try APM expansion
+    auto apm_partitions = make_apm_data_source(source);
+    if (!apm_partitions.empty())
+    {
+        rs_log("Found Apple Partition Map with {} partitions", apm_partitions.size());
+        for (auto &partition : apm_partitions)
+        {
+            result.push_back(partition);
+        }
+        return true;
+    }
+
+    result.push_back(source);
+
+    return false;
+}
+
+std::vector<std::shared_ptr<data_source_t>> expand_source(const std::shared_ptr<data_source_t> file_source)
 {
     std::vector<std::shared_ptr<data_source_t>> sources = {file_source};
 
+    bool changed;
+
     // Process all sources, expanding them if they contain sub-partitions
-    for (size_t i = 0; i < sources.size(); ++i)
+    do
     {
-        auto source = sources[i];
-
-        // Try BIN unwrapping (CD-ROM format)
-        auto bin_source = make_bin_data_source(source);
-        if (bin_source != source)
+        changed = false;
+        std::vector<std::shared_ptr<data_source_t>> results;
+        for (auto &source : sources)
         {
-            sources.push_back(bin_source);
-            continue;
+            changed |= replace_source(source, results);
         }
-
-        // Try DC42 unwrapping
-        auto dc42_source = make_dc42_data_source(source);
-        if (dc42_source != source)
+        if (changed)
         {
-            sources.push_back(dc42_source);
-            continue;
+            sources = results;
         }
+    } while (changed);
 
-        // Try APM expansion
-        auto apm_partitions = make_apm_data_source(source);
-        if (!apm_partitions.empty())
-        {
-#ifdef VERBOSE
-            std::cout << "Found Apple Partition Map with " << apm_partitions.size() << " partitions\n";
-#endif
-            for (auto &partition : apm_partitions)
-            {
-                sources.push_back(partition);
-            }
-        }
-    }
+    rs_log("Expanded to {} data sources", sources.size());
+
     return sources;
 }
 
-void process_disk_image(const std::filesystem::path &filepath, file_visitor_t &visitor, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
+void process_disk_image(const std::filesystem::path &filepath, file_visitor_t &visitor, std::vector<std::shared_ptr<Folder>> * = nullptr)
 {
+    ENTRY("{}", filepath.string());
+
     // Create initial data source
     auto file_source = std::make_shared<file_data_source_t>(filepath);
-#ifdef VERBOSE
-    std::cout << "Analyzing disk image: " << filepath << " (" << file_source->size() << " bytes)\n";
-#endif
+    rs_log("Analyzing disk image: {} ({})", filepath.c_str(), file_source->size());
 
     auto sources = expand_source(file_source);
+
     for (auto &source : sources)
     {
         if (is_hfs(source))
         {
-#ifdef VERBOSE
-            std::cout << "Analyzing disk image: " << filepath << " (" << file_source->size() << " bytes)\n";
-            std::cout << "Found HFS partition\n";
-#endif
+            rs_log("Found HFS partition");
             try
             {
                 partition_t partition(source);
                 auto root = partition.get_root_folder();
-
-                // Keep root folder alive if we're using groups
-                if (root_folders)
-                {
-                    root_folders->push_back(root);
-                }
-
                 visit_folder(root, visitor);
+                root->release();
             }
             catch (const std::exception &hfs_error)
             {
@@ -374,13 +430,15 @@ void process_disk_image(const std::filesystem::path &filepath, file_visitor_t &v
 
 void process_single_path(const std::filesystem::path &path, file_visitor_t &visitor, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
 {
+    ENTRY("{}", path.c_str());
     if (std::filesystem::is_directory(path))
     {
         try
         {
             for (const auto &entry : std::filesystem::recursive_directory_iterator(path))
             {
-                process_single_path(entry.path(), visitor, root_folders);
+                if (std::filesystem::is_regular_file(entry.path()))
+                    process_disk_image(entry.path(), visitor, root_folders);
             }
         }
         catch (const std::filesystem::filesystem_error &e)
@@ -399,8 +457,9 @@ void process_single_path(const std::filesystem::path &path, file_visitor_t &visi
     }
 }
 
-void process_path(const std::vector<std::filesystem::path> &paths, file_visitor_t &visitor, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
+void process_paths(const std::vector<std::filesystem::path> &paths, file_visitor_t &visitor, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
 {
+    ENTRY("{}", paths.size());
     for (const auto &path : paths)
     {
         process_single_path(path, visitor, root_folders);
@@ -507,7 +566,7 @@ int main(int argc, char *argv[])
             filter_visitor_t visitor{printer, filters};
 
             std::vector<std::shared_ptr<Folder>> root_folders;
-            process_path(paths, visitor, &root_folders);
+            process_paths(paths, visitor, &root_folders);
         }
         else
         {
@@ -517,8 +576,8 @@ int main(int argc, char *argv[])
             filter_visitor_t visitor{accumulator, filters};
 
             // Process all paths
-            std::vector<std::shared_ptr<Folder>> root_folders;
-            process_path(paths, visitor, &root_folders);
+            // std::vector<std::shared_ptr<Folder>> root_folders;
+            process_paths(paths, visitor, nullptr);
 
             FileSet file_set;
             for (auto &file : accumulator->get_found_files())
@@ -529,6 +588,11 @@ int main(int argc, char *argv[])
             for (const auto &[key, group] : file_set.get_groups())
             {
                 std::cout << string_from_group(*group) << std::endl;
+                for (auto &file : group->files)
+                {
+                    std::cout << "    Disk: " << string_from_disk(file->disk()) << std::endl;
+                    std::cout << "          Path: " << string_from_path(file->retained_path()) << std::endl;
+                }
             }
         }
     }

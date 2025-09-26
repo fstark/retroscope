@@ -331,6 +331,8 @@ class partition_t
 public:
 	partition_t(std::shared_ptr<data_source_t> data_source);
 
+	const data_source_t &data_source() const { return *data_source_; }
+
 	std::shared_ptr<Folder> get_root_folder() { return root_folder; }
 
 	uint64_t allocation_start() { return allocationStart_; }

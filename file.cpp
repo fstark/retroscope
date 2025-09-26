@@ -4,27 +4,74 @@
 #include <iostream>
 #include <stdexcept>
 
-File::File(const std::string &name, const std::string &type,
-           const std::string &creator, uint32_t data_size, uint32_t rsrc_size)
-    : name_(name), sane_name_(sanitize_string(name)), type_(type), creator_(creator),
-      data_size_(data_size), rsrc_size_(rsrc_size), parent_(nullptr) {}
+#define noVERBOSE
 
-std::vector<std::string> File::path() const
+static int sFileCount = 0;
+
+File::File(const std::shared_ptr<Disk> &disk, const std::string &name, const std::string &type,
+           const std::string &creator, uint32_t data_size, uint32_t rsrc_size)
+    : disk_(disk), name_(name), sane_name_(sanitize_string(name)), type_(type), creator_(creator),
+      data_size_(data_size), rsrc_size_(rsrc_size), parent_(nullptr)
 {
-    std::vector<std::string> parts;
-    Folder *current = parent_;
-    while (current)
-    {
-        parts.insert(parts.begin(), current->name());
-        current = current->parent();
-    }
-    return parts;
+    sFileCount++;
+#ifdef VERBOSE
+    std::cout << "**** Creating File: " << name_ << " (Total files: " << sFileCount << ")\n";
+#endif
 }
 
-Folder::Folder(const std::string &name) : name_(name), sane_name_(sanitize_string(name)), parent_(nullptr) {}
+File::~File()
+{
+    sFileCount--;
+#ifdef VERBOSE
+    std::cout << "**** Destroying File: " << name_ << " (Remaining files: " << sFileCount << ")\n";
+#endif
+}
+
+void File::retain_folder()
+{
+    if (parent_)
+    {
+        retained_folder_ = parent_->shared_from_this();
+        retained_folder_->retain_folder();
+    }
+}
+
+std::vector<std::shared_ptr<Folder>> File::retained_path() const
+{
+    std::vector<std::shared_ptr<Folder>> result;
+    if (retained_folder_)
+    {
+        auto f = retained_folder_;
+        while (f)
+        {
+            result.push_back(f);
+            f = f->retained_folder();
+        }
+    }
+    return result;
+}
+
+static int sFolderCount = 0;
+
+Folder::Folder(const std::string &name) : name_(name), sane_name_(sanitize_string(name)), parent_(nullptr)
+{
+    sFolderCount++;
+#ifdef VERBOSE
+    std::cout << "**** Creating Folder: " << name_ << " (Total folders: " << sFolderCount << ")\n";
+#endif
+}
+
+Folder::~Folder()
+{
+    sFolderCount--;
+#ifdef VERBOSE
+    std::cout << "**** Destroying Folder: " << name_ << " (Remaining folders: " << sFolderCount << ")\n";
+#endif
+}
 
 void Folder::add_file(std::shared_ptr<File> file)
 {
+    // std::cout << "Adding file '" << file->name() << "' to folder '" << name_ << "'\n";
     if (file->parent() != nullptr)
     {
         throw std::runtime_error("File '" + file->name() + "' is already in a folder");

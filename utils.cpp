@@ -6,7 +6,6 @@
 #include <cctype>
 #include <algorithm>
 
-bool gVerbose = false;
 std::string gType = "";
 std::string gCreator = "";
 std::string gName = "";
@@ -226,4 +225,23 @@ bool has_case_insensitive_substring(const std::string &source, const std::string
                           });
 
     return it != source.end();
+}
+
+// Static variable for log indentation
+static int log_indent = 0;
+
+void rs_log_increment()
+{
+    log_indent++;
+}
+
+void rs_log_decrement()
+{
+    if (log_indent > 0)
+        log_indent--;
+}
+
+int get_log_indent()
+{
+    return log_indent;
 }

@@ -187,6 +187,10 @@ void partition_t::build_root_folder()
         throw std::runtime_error("Not an HFS volume");
     }
 
+    auto disk = std::make_shared<Disk>(mdb.getVolumeName(), data_source_->description());
+
+    // std::cout << std::format("\n\n\n\nHFS Volume: {} (Disk: {})\n", mdb.getVolumeName(), data_source_->description());
+
     allocationBlockSize_ = mdb.allocationBlockSize();
     allocationStart_ = mdb.allocationBlockStart();
 
@@ -278,13 +282,13 @@ void partition_t::build_root_folder()
         } else if (file_record) {
             // This is a file
             std::shared_ptr<File> file = std::make_shared<File>(
+                disk,
                 catalog_record->name(),
                 file_record->type(),
                 file_record->creator(),
                 file_record->dataLogicalSize(),
-                file_record->rsrcLogicalSize()
-            );
-            
+                file_record->rsrcLogicalSize());
+
             // Find parent folder and add file to it
             auto parent_it = folders.find(parent_id);
             if (parent_it != folders.end()) {

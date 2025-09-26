@@ -24,6 +24,7 @@ public:
 class data_source_t
 {
 public:
+    virtual std::string description() const = 0;
     virtual ~data_source_t() = default;
     virtual block_t read_block(uint64_t offset, uint16_t size) = 0;
     virtual uint64_t size() const = 0;
@@ -33,17 +34,24 @@ class file_data_source_t : public data_source_t
 {
     std::ifstream file_;
     uint64_t size_;
+    std::string description_;
 
 public:
     file_data_source_t(const std::filesystem::path &file_path)
         : file_(file_path, std::ios::binary)
     {
+        description_ = file_path.string();
         if (!file_.is_open())
         {
             throw std::runtime_error("Cannot open file: " + file_path.string());
         }
 
         size_ = std::filesystem::file_size(file_path);
+    }
+
+    std::string description() const override
+    {
+        return description_;
     }
 
     uint64_t size() const override
@@ -85,6 +93,11 @@ public:
         {
             throw std::out_of_range("Range exceeds source size");
         }
+    }
+
+    std::string description() const override
+    {
+        return source_->description() + std::format(" [offset={}, size={}]", offset_, size_);
     }
 
     uint64_t size() const override
