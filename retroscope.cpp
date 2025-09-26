@@ -541,8 +541,8 @@ int main(int argc, char *argv[])
         size_t slash_pos = gType.find('/');
         if (slash_pos != std::string::npos)
         {
-            gType = gType.substr(0, slash_pos);
             gCreator = gType.substr(slash_pos + 1);
+            gType = gType.substr(0, slash_pos);
         }
 
         std::vector<std::shared_ptr<filter_t>> filters;
@@ -595,6 +595,27 @@ int main(int argc, char *argv[])
                 }
             }
         }
+    }
+    catch (const std::filesystem::filesystem_error &e)
+    {
+        std::cerr << "Filesystem Error: " << e.what() << "\n";
+        std::cerr << "Path: " << e.path1() << "\n";
+        return 1;
+    }
+    catch (const std::out_of_range &e)
+    {
+        std::cerr << "Range Error: " << e.what() << "\n";
+        return 1;
+    }
+    catch (const std::runtime_error &e)
+    {
+        std::cerr << "Runtime Error: " << e.what() << "\n";
+        return 1;
+    }
+    catch (const std::invalid_argument &e)
+    {
+        std::cerr << "Invalid Argument: " << e.what() << "\n";
+        return 1;
     }
     catch (const std::exception &e)
     {

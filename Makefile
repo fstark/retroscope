@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++23 -Wall -Wextra -O2
+CXXFLAGS = -std=c++23 -Wall -Wextra -O2 -g
 # CXXFLAGS = -std=c++23 -Wall -Wextra -O0 -g
 DEPFLAGS = -MMD -MP
 MAKEFLAGS += -j12
