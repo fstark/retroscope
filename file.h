@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <memory>
 
 // Forward declaration
 class Disk;
@@ -23,8 +24,6 @@ class File
 	Folder *parent_;
 	std::shared_ptr<Folder> retained_folder_;
 
-	friend class Folder;
-
 public:
 	File(const std::shared_ptr<Disk> &disk,
 		 const std::string &name, const std::string &type,
@@ -37,6 +36,7 @@ public:
 	uint32_t data_size() const { return data_size_; }
 	uint32_t rsrc_size() const { return rsrc_size_; }
 	Folder *parent() const { return parent_; }
+	void set_parent(Folder *parent) { parent_ = parent; }
 	std::vector<std::shared_ptr<Folder>> retained_path() const;
 	void retain_folder();
 };
@@ -50,8 +50,6 @@ class Folder : public std::enable_shared_from_this<Folder>
 	Folder *parent_;
 	std::shared_ptr<Folder> retained_folder_;
 
-	friend class Folder;
-
 public:
 	Folder(const std::string &name);
 	~Folder();
@@ -62,6 +60,7 @@ public:
 	const std::vector<std::shared_ptr<File>> &files() const { return files_; }
 	const std::vector<std::shared_ptr<Folder>> &folders() const { return folders_; }
 	Folder *parent() const { return parent_; }
+	void set_parent(Folder *parent) { parent_ = parent; }
 	std::shared_ptr<Folder> retained_folder() const { return retained_folder_; }
 	void retain_folder()
 	{

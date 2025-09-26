@@ -76,7 +76,7 @@ void Folder::add_file(std::shared_ptr<File> file)
     {
         throw std::runtime_error("File '" + file->name() + "' is already in a folder");
     }
-    file->parent_ = this;
+    file->set_parent(this);
     files_.push_back(file);
 }
 
@@ -86,7 +86,7 @@ void Folder::add_folder(std::shared_ptr<Folder> folder)
     {
         throw std::runtime_error("Folder '" + folder->name() + "' is already in a folder");
     }
-    folder->parent_ = this;
+    folder->set_parent(this);
     folders_.push_back(folder);
 }
 
