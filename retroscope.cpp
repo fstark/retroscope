@@ -19,7 +19,8 @@
 #include <filesystem>
 #include <map>
 #include <tuple>
-#include <tuple>
+#include <unordered_set>
+
 
 #define noVERBOSE
 #ifndef VERBOSE
@@ -150,7 +151,7 @@ class filter_visitor_t : public file_visitor_t
     std::vector<std::shared_ptr<filter_t>> filters_;
 
 public:
-    filter_visitor_t(std::shared_ptr<file_visitor_t> next, std::vector<std::shared_ptr<filter_t>> &filters) : next_(next),
+    filter_visitor_t(std::vector<std::shared_ptr<filter_t>> &filters, std::shared_ptr<file_visitor_t> next) : next_(next),
                                                                                                               filters_(filters)
     {
     }
@@ -222,12 +223,22 @@ public:
     }
 };
 
+//  Accumulates all files in a list
+//  Holds a set of files to exclude
 class file_accumulator_t : public file_visitor_t
 {
     std::vector<std::shared_ptr<File>> found_files_;
+    std::unordered_set<std::string> exclude_keys_;
 
 public:
     file_accumulator_t() {}
+    file_accumulator_t( const std::vector<std::shared_ptr<File>> &exclusion)
+    {
+        for (const auto &file : exclusion)
+        {
+            exclude_keys_.insert(file->key());
+        }
+    }
 
     void visit_file(std::shared_ptr<File> file) override
     {
@@ -444,7 +455,7 @@ void process_disk_image(const std::filesystem::path &filepath, file_visitor_t &v
     }
 }
 
-void process_single_path(const std::filesystem::path &path, file_visitor_t &visitor, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
+void process_single_path(const std::filesystem::path &path, file_visitor_t &visitor)
 {
     ENTRY("{}", path.c_str());
     if (std::filesystem::is_directory(path))
@@ -454,7 +465,7 @@ void process_single_path(const std::filesystem::path &path, file_visitor_t &visi
             for (const auto &entry : std::filesystem::recursive_directory_iterator(path))
             {
                 if (std::filesystem::is_regular_file(entry.path()))
-                    process_disk_image(entry.path(), visitor, root_folders);
+                    process_disk_image(entry.path(), visitor);
             }
         }
         catch (const std::filesystem::filesystem_error &e)
@@ -464,7 +475,7 @@ void process_single_path(const std::filesystem::path &path, file_visitor_t &visi
     }
     else if (std::filesystem::is_regular_file(path))
     {
-        process_disk_image(path, visitor, root_folders);
+        process_disk_image(path, visitor);
     }
     else
     {
@@ -473,19 +484,27 @@ void process_single_path(const std::filesystem::path &path, file_visitor_t &visi
     }
 }
 
-void process_paths(const std::vector<std::filesystem::path> &paths, file_visitor_t &visitor, std::vector<std::shared_ptr<Folder>> *root_folders = nullptr)
+void process_paths(const std::vector<std::filesystem::path> &paths, file_visitor_t &visitor)
 {
     ENTRY("{}", paths.size());
     for (const auto &path : paths)
     {
-        process_single_path(path, visitor, root_folders);
+        process_single_path(path, visitor);
     }
 }
 
-std::tuple<std::map<std::string, std::string>, std::vector<std::filesystem::path>> parse_arguments(int argc, char *argv[])
+/*
+    All arguments in the for --xxx=yyy or --xxx form are returned in the map 1st argument
+    For the rest:
+        1st argument is always 'list' or 'diff'
+        It is returned as the tuple first argument
+        The rest of the arguments are a list of filesystem paths
+*/
+std::tuple<std::string, std::map<std::string, std::string>, std::vector<std::filesystem::path>> parse_arguments(int argc, char *argv[])
 {
     std::map<std::string, std::string> flags;
     std::vector<std::filesystem::path> paths;
+    std::string command;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -515,15 +534,27 @@ std::tuple<std::map<std::string, std::string>, std::vector<std::filesystem::path
         }
         else
         {
-            // Not a flag, treat as a path
-            paths.emplace_back(arg);
+            // Not a flag - first non-flag argument is the command, rest are paths
+            if (command.empty())
+            {
+                command = arg;
+            }
+            else
+            {
+                paths.emplace_back(arg);
+            }
         }
     }
 
-    return std::make_tuple(flags, paths);
+    return std::make_tuple(command, flags, paths);
 }
 
 using namespace std::string_literals;
+
+
+/*
+    retroscope list <file_or_directories> [--type=XXXX] [--creator=XXXX] [--name=substring] [--group]
+*/
 
 int main(int argc, char *argv[])
 {
@@ -539,7 +570,13 @@ int main(int argc, char *argv[])
     try
     {
         // Parse command line arguments
-        auto [flags, paths] = parse_arguments(argc, argv);
+        auto [command, flags, paths] = parse_arguments(argc, argv);
+
+        if (command!="list" && command!="diff")
+        {
+            std::cerr << "Error: First argument must be 'list' or 'diff'\n";
+            return 1;
+        }
 
         // Check if we have any paths to process
         if (paths.empty())
@@ -575,25 +612,15 @@ int main(int argc, char *argv[])
             filters.push_back(std::make_shared<creator_filter_t>(gCreator));
         }
 
-        if (!gGroup)
-        {
-            std::shared_ptr<file_visitor_t> printer;
-            printer = std::make_shared<file_printer_t>();
-            filter_visitor_t visitor{printer, filters};
-
-            std::vector<std::shared_ptr<Folder>> root_folders;
-            process_paths(paths, visitor, &root_folders);
-        }
-        else
+        if (gGroup)
         {
             std::shared_ptr<file_accumulator_t> accumulator;
             accumulator = std::make_shared<file_accumulator_t>();
 
-            filter_visitor_t visitor{accumulator, filters};
+            filter_visitor_t visitor{filters, accumulator};
 
             // Process all paths
-            // std::vector<std::shared_ptr<Folder>> root_folders;
-            process_paths(paths, visitor, nullptr);
+            process_paths(paths, visitor);
 
             FileSet file_set;
             for (auto &file : accumulator->get_found_files())
@@ -610,6 +637,14 @@ int main(int argc, char *argv[])
                     std::cout << "          Path: " << string_from_path(file->retained_path()) << std::endl;
                 }
             }
+        }
+        else
+        {
+            std::shared_ptr<file_visitor_t> printer;
+            printer = std::make_shared<file_printer_t>();
+            filter_visitor_t visitor{filters, printer};
+
+            process_paths(paths, visitor);
         }
     }
     catch (const std::filesystem::filesystem_error &e)

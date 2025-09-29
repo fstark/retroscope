@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <memory>
+#include <format>
 
 // Forward declaration
 class Disk;
@@ -39,6 +40,8 @@ public:
 	void set_parent(Folder *parent) { parent_ = parent; }
 	std::vector<std::shared_ptr<Folder>> retained_path() const;
 	void retain_folder();
+	// concatenation of name, type, creator, datasize and rscsize
+	std::string key() const { return std::format( "{}|{}|{}|{}|{}", name_, type_, creator_, data_size_, rsrc_size_); }
 };
 
 class Folder : public std::enable_shared_from_this<Folder>

@@ -56,4 +56,5 @@ Even in this crude form, it is somewhat useful (ie: ```./retroscope --terse MyDi
 ## Testing
 
 sample.dsk contains a sample hfs filesystem.
+sample400K.dsk contains a sample mfs filesystem.
 
