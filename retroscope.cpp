@@ -22,13 +22,6 @@
 #include <unordered_set>
 
 
-#define noVERBOSE
-#ifndef VERBOSE
-#undef ENTRY
-#define ENTRY(...)
-#define rs_log(...)
-#endif
-
 std::string string_from_sizes(uint32_t min, uint32_t max)
 {
     if (min == max)
@@ -242,12 +235,30 @@ public:
 
     void visit_file(std::shared_ptr<File> file) override
     {
-        found_files_.push_back(file);
-        file->retain_folder();
+        if (!is_excluded(file))
+        {
+            found_files_.push_back(file);
+            file->retain_folder();
+        }
     }
 
     const std::vector<std::shared_ptr<File>> &get_found_files() const { return found_files_; }
     void clear() { found_files_.clear(); }
+
+    void switch_exclusion()
+    {
+        exclude_keys_.clear();
+        for (const auto &file : found_files_)
+        {
+            exclude_keys_.insert(file->key());
+        }
+        clear();
+    }
+    bool is_excluded(const std::shared_ptr<File> &file) const
+    {
+        rs_log( "Checking exclusion for file key: {}", file->key());
+        return exclude_keys_.find(file->key()) != exclude_keys_.end();
+    }
 };
 
 class file_printer_t : public file_visitor_t
@@ -612,39 +623,63 @@ int main(int argc, char *argv[])
             filters.push_back(std::make_shared<creator_filter_t>(gCreator));
         }
 
-        if (gGroup)
+        if (command=="list" && !gGroup)
         {
-            std::shared_ptr<file_accumulator_t> accumulator;
-            accumulator = std::make_shared<file_accumulator_t>();
-
-            filter_visitor_t visitor{filters, accumulator};
-
-            // Process all paths
+            auto printer = std::make_shared<file_printer_t>();
+            filter_visitor_t visitor{filters, printer};
             process_paths(paths, visitor);
+            return 0;
+        }
 
-            FileSet file_set;
-            for (auto &file : accumulator->get_found_files())
-            {
-                file_set.add_file(file);
-            }
-            std::cout << "Found " << file_set.group_count() << " groups with a total of " << file_set.file_count() << " files.\n";
-            for (const auto &[key, group] : file_set.get_groups())
-            {
-                std::cout << string_from_group(*group) << std::endl;
-                for (auto &file : group->files)
-                {
-                    std::cout << "    Disk: " << string_from_disk(file->disk()) << std::endl;
-                    std::cout << "          Path: " << string_from_path(file->retained_path()) << std::endl;
-                }
-            }
+            //  We will need to keep the files somewhere
+        auto accumulator = std::make_shared<file_accumulator_t>();
+        filter_visitor_t visitor{filters, accumulator};
+
+        if (command=="list")
+        {
+            process_paths(paths, visitor);
         }
         else
         {
-            std::shared_ptr<file_visitor_t> printer;
-            printer = std::make_shared<file_printer_t>();
-            filter_visitor_t visitor{filters, printer};
-
+            //  We pick out the last path
+            if (paths.size() < 1)
+            {
+                std::cerr << "Error: 'diff' command requires at least two paths\n";
+                return 1;
+            }
+            auto last_path = paths.back();
+            paths.pop_back();
             process_paths(paths, visitor);
+            accumulator->switch_exclusion();
+            process_paths({last_path}, visitor);
+        }
+
+        if (!gGroup)
+        {
+            // we print the files [should be done with a printer visitor]
+            for (auto &file : accumulator->get_found_files())
+            {
+                std::cout << string_from_file(*file) << std::endl;
+            }
+            
+            return 0;
+        }
+
+        //  We process the grouping command
+        FileSet file_set;
+        for (auto &file : accumulator->get_found_files())
+        {
+            file_set.add_file(file);
+        }
+        std::cout << "Found " << file_set.group_count() << " groups with a total of " << file_set.file_count() << " files.\n";
+        for (const auto &[key, group] : file_set.get_groups())
+        {
+            std::cout << string_from_group(*group) << std::endl;
+            for (auto &file : group->files)
+            {
+                std::cout << "    Disk: " << string_from_disk(file->disk()) << std::endl;
+                std::cout << "          Path: " << string_from_path(file->retained_path()) << std::endl;
+            }
         }
     }
     catch (const std::filesystem::filesystem_error &e)

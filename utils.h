@@ -53,7 +53,7 @@ void rs_log(const std::format_string<Args...> format_str, Args &&...args)
     // Add indentation based on current log_indent level
     int indent = get_log_indent();
     std::string indent_str(static_cast<size_t>(indent * 4), ' ');
-    std::clog << indent_str << std::format(format_str, std::forward<Args>(args)...) << std::endl;
+    std::cout << indent_str << std::format(format_str, std::forward<Args>(args)...) << std::endl;
 }
 
 template <typename... Args>
@@ -62,7 +62,7 @@ void rs_log_function(const std::string &function, const std::string &filename, i
     // Add indentation based on current log_indent level
     int indent = get_log_indent();
     std::string indent_str(static_cast<size_t>(indent * 4), ' ');
-    std::clog
+    std::cout
         << indent_str
         << std::format("--> {} (", function)
         << std::format(format_str, std::forward<Args>(args)...)
@@ -94,3 +94,11 @@ public:
 #define ENTRY(...)                                              \
     rs_log_function(__func__, __FILE__, __LINE__, __VA_ARGS__); \
     rs_log_scope_guard _rs_log_guard(__func__);
+
+
+#define noVERBOSE
+#ifndef VERBOSE
+#undef ENTRY
+#define ENTRY(...)
+#define rs_log(...)
+#endif
