@@ -95,7 +95,6 @@ public:
     rs_log_function(__func__, __FILE__, __LINE__, __VA_ARGS__); \
     rs_log_scope_guard _rs_log_guard(__func__);
 
-
 #define noVERBOSE
 #ifndef VERBOSE
 #undef ENTRY

@@ -15,9 +15,12 @@ master_directory_block_t as_master_directory_block(block_t &block)
 // Function to check if a data source contains an HFS partition
 bool is_hfs(std::shared_ptr<data_source_t> source)
 {
+    ENTRY("{}", source->description());
+
     // Need at least 1024 + 512 bytes to check for HFS MDB at block 2
     if (source->size() < 1536)
     {
+        rs_log("Data source too small to be HFS");
         return false;
     }
 
@@ -29,6 +32,7 @@ bool is_hfs(std::shared_ptr<data_source_t> source)
     uint16_t signature = (uint16_t(data[0]) << 8) | uint16_t(data[1]);
     if (signature != 0x4244)
     {
+        rs_log("Invalid HFS signature: 0x{:04X}", signature);
         return false;
     }
 
@@ -38,11 +42,13 @@ bool is_hfs(std::shared_ptr<data_source_t> source)
                                 (uint32_t(data[22]) << 8) | uint32_t(data[23]);
 
     // Allocation block size should be a power of 2 and >= 512
-    if (alloc_block_size < 512 || (alloc_block_size & (alloc_block_size - 1)) != 0)
+    if (alloc_block_size == 0 || (alloc_block_size % 512) != 0)
     {
+        rs_log("Unreasonable allocation block size: {}", alloc_block_size);
         return false;
     }
 
+    rs_log("HFS volume detected with allocation block size: {}", alloc_block_size);
     return true;
 }
 

@@ -21,7 +21,6 @@
 #include <tuple>
 #include <unordered_set>
 
-
 std::string string_from_sizes(uint32_t min, uint32_t max)
 {
     if (min == max)
@@ -225,7 +224,7 @@ class file_accumulator_t : public file_visitor_t
 
 public:
     file_accumulator_t() {}
-    file_accumulator_t( const std::vector<std::shared_ptr<File>> &exclusion)
+    file_accumulator_t(const std::vector<std::shared_ptr<File>> &exclusion)
     {
         for (const auto &file : exclusion)
         {
@@ -256,7 +255,7 @@ public:
     }
     bool is_excluded(const std::shared_ptr<File> &file) const
     {
-        rs_log( "Checking exclusion for file key: {}", file->key());
+        rs_log("Checking exclusion for file key: {}", file->key());
         return exclude_keys_.find(file->key()) != exclude_keys_.end();
     }
 };
@@ -395,6 +394,8 @@ bool replace_source(const std::shared_ptr<data_source_t> source, std::vector<std
 
 std::vector<std::shared_ptr<data_source_t>> expand_source(const std::shared_ptr<data_source_t> file_source)
 {
+    ENTRY("{}", file_source->description());
+
     std::vector<std::shared_ptr<data_source_t>> sources = {file_source};
 
     bool changed;
@@ -562,7 +563,6 @@ std::tuple<std::string, std::map<std::string, std::string>, std::vector<std::fil
 
 using namespace std::string_literals;
 
-
 /*
     retroscope list <file_or_directories> [--type=XXXX] [--creator=XXXX] [--name=substring] [--group]
 */
@@ -583,7 +583,7 @@ int main(int argc, char *argv[])
         // Parse command line arguments
         auto [command, flags, paths] = parse_arguments(argc, argv);
 
-        if (command!="list" && command!="diff")
+        if (command != "list" && command != "diff")
         {
             std::cerr << "Error: First argument must be 'list' or 'diff'\n";
             return 1;
@@ -623,7 +623,7 @@ int main(int argc, char *argv[])
             filters.push_back(std::make_shared<creator_filter_t>(gCreator));
         }
 
-        if (command=="list" && !gGroup)
+        if (command == "list" && !gGroup)
         {
             auto printer = std::make_shared<file_printer_t>();
             filter_visitor_t visitor{filters, printer};
@@ -631,11 +631,11 @@ int main(int argc, char *argv[])
             return 0;
         }
 
-            //  We will need to keep the files somewhere
+        //  We will need to keep the files somewhere
         auto accumulator = std::make_shared<file_accumulator_t>();
         filter_visitor_t visitor{filters, accumulator};
 
-        if (command=="list")
+        if (command == "list")
         {
             process_paths(paths, visitor);
         }
@@ -661,7 +661,7 @@ int main(int argc, char *argv[])
             {
                 std::cout << string_from_file(*file) << std::endl;
             }
-            
+
             return 0;
         }
 
