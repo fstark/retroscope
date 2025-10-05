@@ -437,16 +437,15 @@ void process_disk_image(const std::filesystem::path &filepath, file_visitor_t &v
             rs_log("Found HFS partition");
             try
             {
-                partition_t partition(source);
+                hfs_partition_t partition(source);
                 auto root = partition.get_root_folder();
                 visit_folder(root, visitor);
                 root->release();
             }
             catch (const std::exception &hfs_error)
             {
-                std::cerr << "In disk image: " << filepath << " (" << file_source->size() << " bytes)\n";
-                std::cerr << "Error parsing HFS partition: " << hfs_error.what() << "\n";
-                std::cerr << "Continuing with other partitions...\n";
+                std::cerr << "\033[31mError parsing HFS partition\033[0m : " << filepath << " (" << file_source->size() << " bytes) ";
+                std::cerr << ": " << hfs_error.what() << "\n";
             }
         }
         else if (is_mfs(source))
@@ -461,7 +460,6 @@ void process_disk_image(const std::filesystem::path &filepath, file_visitor_t &v
             {
                 std::cerr << "In disk image: " << filepath << " (" << file_source->size() << " bytes)\n";
                 std::cerr << "Error parsing MFS partition: " << mfs_error.what() << "\n";
-                std::cerr << "Continuing with other partitions...\n";
             }
         }
     }

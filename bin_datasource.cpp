@@ -39,7 +39,7 @@ bool is_bin_file(std::shared_ptr<data_source_t> source) {
         }
     }
     
-    std::cout << std::format("Detected CD-ROM BIN file: {} sectors of {} bytes each\n", 
+    std::clog << std::format("Detected CD-ROM BIN file: {} sectors of {} bytes each\n", 
                            source->size() / CDROM_SECTOR_SIZE, CDROM_SECTOR_SIZE);
     
     return true;

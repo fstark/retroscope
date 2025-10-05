@@ -26,7 +26,7 @@
 // Forward declarations
 class btree_header_node_t;
 class master_directory_block_t;
-class partition_t;
+class hfs_partition_t;
 class btree_file_t;
 
 // Function to check if a data source contains an HFS partition
@@ -290,21 +290,32 @@ public:
 	int32_t rsrcPhysicalSize() const { return be32(file_->rsrcPhysicalSize); }
 };
 
-class file_t
+class hfs_file_t
 {
 	std::vector<extent_t> extents_;
-	partition_t &partition_;
+	hfs_partition_t &partition_;
+	uint32_t logical_size_ = 0;
 
 public:
-	file_t(partition_t &partition) : partition_(partition) {}
+	hfs_file_t(hfs_partition_t &partition) : partition_(partition) {}
+	hfs_file_t(hfs_partition_t &partition, uint32_t logical_size) 
+		: partition_(partition), logical_size_(logical_size) {}
 
 	void add_extent(const extent_t &extend);
 	// same with sanity check
 	void add_extent(uint16_t start_block, const extent_t &extent);
-	partition_t &partition() { return partition_; }
+	hfs_partition_t &partition() { return partition_; }
 	uint16_t to_absolute_block(uint16_t block) const;
 
 	uint32_t allocation_offset(uint32_t offset) const;
+
+	// Set the logical size (called when creating from catalog record)
+	void set_logical_size(uint32_t size) { logical_size_ = size; }
+	uint32_t logical_size() const { return logical_size_; }
+
+	// Read functions
+	std::vector<uint8_t> read() const;
+	std::vector<uint8_t> read(uint32_t offset, uint32_t size) const;
 
 	btree_file_t as_btree_file();
 
@@ -313,14 +324,14 @@ public:
 	bool has_extents() const { return !extents_.empty(); }
 };
 
-class partition_t
+class hfs_partition_t
 {
 	std::shared_ptr<data_source_t> data_source_;
 	uint64_t allocationStart_ = 0;
 	uint64_t allocationBlockSize_ = 512;
 
-	file_t extents_;
-	file_t catalog_;
+	hfs_file_t extents_;
+	hfs_file_t catalog_;
 
 	block_t read(uint64_t blockOffset) const;
 	void build_root_folder();
@@ -329,7 +340,7 @@ class partition_t
 	std::map<uint32_t, std::shared_ptr<Folder>> folders;
 
 public:
-	partition_t(std::shared_ptr<data_source_t> data_source);
+	hfs_partition_t(std::shared_ptr<data_source_t> data_source);
 
 	const data_source_t &data_source() const { return *data_source_; }
 
@@ -357,13 +368,13 @@ public:
 
 class btree_file_t
 {
-	file_t &file_;
+	hfs_file_t &file_;
 
 	uint32_t first_leaf_node_; //	first leaf node position relative to file
 	uint16_t node_size_;	   //	node size in bytes
 
 public:
-	btree_file_t(file_t &file);
+	btree_file_t(hfs_file_t &file);
 
 	//	Callback gets a btree_leaf_node_t&
 	template <typename F>

@@ -1,5 +1,6 @@
 #include "hfs_parser.h"
 #include <map>
+#include <algorithm>
 
 // Free-standing functions to convert block_t to specific node types
 btree_header_node_t as_btree_header_node(block_t &block)
@@ -101,13 +102,13 @@ uint16_t master_directory_block_t::catalogExtendCount(int index) const
     return be16(content->drCTExtRec[index].blockCount);
 }
 
-// file_t implementations
-void file_t::add_extent(const extent_t &extend)
+// hfs_file_t implementations
+void hfs_file_t::add_extent(const extent_t &extend)
 {
     extents_.push_back(extend);
 }
 
-void file_t::add_extent(uint16_t start_block, const extent_t &extent)
+void hfs_file_t::add_extent(uint16_t start_block, const extent_t &extent)
 {
     //  check that we already have start_block blocks in the extent
     uint16_t total_blocks = 0;
@@ -125,7 +126,7 @@ void file_t::add_extent(uint16_t start_block, const extent_t &extent)
     extents_.push_back(extent);
 }
 
-uint16_t file_t::to_absolute_block(uint16_t block) const
+uint16_t hfs_file_t::to_absolute_block(uint16_t block) const
 {
     uint16_t absolute_block = 0;
     for (const auto &extent : extents_)
@@ -140,7 +141,7 @@ uint16_t file_t::to_absolute_block(uint16_t block) const
     throw std::out_of_range("Block out of range");
 }
 
-uint32_t file_t::allocation_offset(uint32_t offset) const
+uint32_t hfs_file_t::allocation_offset(uint32_t offset) const
 {
     auto allocation_block_size = partition_.allocation_block_size();
     for (auto &ext : extents_)
@@ -152,25 +153,81 @@ uint32_t file_t::allocation_offset(uint32_t offset) const
     throw std::out_of_range("Offset out of range");
 }
 
-btree_file_t file_t::as_btree_file()
+btree_file_t hfs_file_t::as_btree_file()
 {
     return btree_file_t(*this);
 }
 
-// partition_t implementations
-partition_t::partition_t(std::shared_ptr<data_source_t> data_source)
+std::vector<uint8_t> hfs_file_t::read() const
+{
+    return read(0, logical_size_);
+}
+
+std::vector<uint8_t> hfs_file_t::read(uint32_t offset, uint32_t size) const
+{
+    if (offset >= logical_size_) {
+        return {}; // Beyond file end
+    }
+    
+    // Clamp size to not read beyond logical file size
+    size = std::min(size, logical_size_ - offset);
+    
+    std::vector<uint8_t> result;
+    result.reserve(size);
+    
+    uint32_t bytes_read = 0;
+    
+    // Use the existing allocation_offset method which handles the extent traversal
+    while (bytes_read < size) {
+        uint32_t current_offset = offset + bytes_read;
+        uint32_t remaining = size - bytes_read;
+        
+        // Calculate how much we can read in one go
+        // We need to be careful not to cross extent boundaries
+        uint32_t bytes_in_this_read = remaining;
+        
+        // Find which extent this offset falls into and limit read to extent boundary
+        uint32_t file_pos = 0;
+        for (const auto& extent : extents_) {
+            uint32_t extent_size = extent.count * partition_.allocation_block_size();
+            if (current_offset < file_pos + extent_size) {
+                // This offset is in this extent
+                uint32_t offset_in_extent = current_offset - file_pos;
+                uint32_t bytes_left_in_extent = extent_size - offset_in_extent;
+                bytes_in_this_read = std::min(bytes_in_this_read, bytes_left_in_extent);
+                break;
+            }
+            file_pos += extent_size;
+        }
+        
+        // Use allocation_offset to get the absolute offset and read
+        uint32_t alloc_offset = allocation_offset(current_offset);
+        block_t block_data = partition_.read_allocation(alloc_offset, bytes_in_this_read);
+        
+        // Copy the data from the block
+        const uint8_t* block_ptr = static_cast<const uint8_t*>(block_data.data());
+        result.insert(result.end(), block_ptr, block_ptr + bytes_in_this_read);
+        
+        bytes_read += bytes_in_this_read;
+    }
+    
+    return result;
+}
+
+// hfs_partition_t implementations
+hfs_partition_t::hfs_partition_t(std::shared_ptr<data_source_t> data_source)
     : data_source_(data_source),
       extents_(*this), catalog_(*this)
 {
     build_root_folder();
 }
 
-block_t partition_t::read(uint64_t blockOffset) const
+block_t hfs_partition_t::read(uint64_t blockOffset) const
 {
     return data_source_->read_block(blockOffset * 512, 512);
 }
 
-block_t partition_t::read_allocated_block(uint16_t block, uint16_t size)
+block_t hfs_partition_t::read_allocated_block(uint16_t block, uint16_t size)
 {
     if (size == 0xffff)
         size = allocationBlockSize_;
@@ -183,8 +240,14 @@ block_t partition_t::read_allocated_block(uint16_t block, uint16_t size)
     return data_source_->read_block(disk_offset, size);
 }
 
-void partition_t::build_root_folder()
+#define CNID_ROOT 2
+#define CNID_CATALOG 4
+
+//  This is more than "building root", it is "mounting the partition and creating proxy for all the files"
+void hfs_partition_t::build_root_folder()
 {
+    //  First step is to read the Master Directory Block
+    //  To extract a few key informations
     block_t mdb_block = read(2); // MDB is at block 2
     master_directory_block_t mdb = as_master_directory_block(mdb_block);
 
@@ -205,7 +268,8 @@ void partition_t::build_root_folder()
     std::cout << std::format("Allocation start: {}\n", allocationStart_);
 #endif
 
-    // Set up extents file
+    // We now set up the extents file
+    //  (we want to see where the extends file reside on disk)
     for (int i = 0; i < 3; i++)
     {
         uint16_t start = mdb.extendsExtendStart(i);
@@ -220,6 +284,7 @@ void partition_t::build_root_folder()
     }
 
     // Set up catalog file
+    //  (we want to see where the catalog file reside on disk)
     for (int i = 0; i < 3; i++)
     {
         uint16_t start = mdb.catalogExtendStart(i);
@@ -233,6 +298,10 @@ void partition_t::build_root_folder()
         }
     }
 
+    //  However, the MDB only gives us the first 3 extents for each file
+    //  It is always enough for extends [citation needed]
+    //  but can be insufficient for the catalog file
+    //  so we scan all the extends records to find additional extends for the catalog file (CNID 4, DATA fork)
     // Get additional extents from the extents B-tree
     btree_file_t extents_btree = extents_.as_btree_file();
     extents_btree.iterate_extents([&](const extents_record_t &extent_record)
@@ -241,7 +310,7 @@ void partition_t::build_root_folder()
         uint32_t file_ID = extent_record.file_ID();
 
         // We add the file_ID 4 data extends to the catalog file
-        if (file_ID == 4 && forkType == 0x00)
+        if (file_ID == CNID_CATALOG && forkType == 0x00)
         {
             for (int i = 0; i < 3; i++) {
                 auto extent = extent_record.get_extent(i);
@@ -251,11 +320,12 @@ void partition_t::build_root_folder()
             }
         } });
 
+    // Now we can read the catalog B-tree and build the folder/file hierarchy
     auto catalog_btree = catalog_.as_btree_file();
 
     // Root folder has ID 2
     root_folder = std::make_shared<Folder>(from_macroman(mdb.getVolumeName()));
-    folders[2] = root_folder;
+    folders[CNID_ROOT] = root_folder;
 
     std::vector<hierarchy_t> hierarchy;
 
@@ -327,17 +397,17 @@ void partition_t::build_root_folder()
     // All the Folder shared_ptr should now be owned by their parents folders
 }
 
-void partition_t::readCatalogHeader(uint64_t /* catalogExtendStartBlock */)
+void hfs_partition_t::readCatalogHeader(uint64_t /* catalogExtendStartBlock */)
 {
     // Implementation moved to build_root_folder()
 }
 
-void partition_t::readCatalogRoot(uint16_t /* rootNode */)
+void hfs_partition_t::readCatalogRoot(uint16_t /* rootNode */)
 {
     // Implementation integrated into build_root_folder()
 }
 
-void partition_t::dumpextentTree()
+void hfs_partition_t::dumpextentTree()
 {
     std::cout << "=== Extents B-tree ===\n";
 
@@ -364,7 +434,7 @@ void partition_t::dumpextentTree()
 }
 
 // btree_file_t implementations
-btree_file_t::btree_file_t(file_t &file) : file_(file)
+btree_file_t::btree_file_t(hfs_file_t &file) : file_(file)
 {
     auto start = file_.allocation_offset(0);
     // std::cout << "Btree file starts at absolute block: " << start+file_.partition().
