@@ -1,16 +1,5 @@
 #include "mfs_parser.h"
 
-#define noVERBOSE
-#ifdef VERBOSE
-// rs_log is already defined in utils.h, don't redefine it
-#undef ENTRY
-#define ENTRY(...)
-#else
-#undef ENTRY
-#define ENTRY(...)
-#define rs_log(...)
-#endif
-
 // Function to check if a data source contains an MFS partition
 bool is_mfs(std::shared_ptr<data_source_t> source)
 {
@@ -44,9 +33,23 @@ std::vector<uint8_t> mfs_partition_t::read_file_fork(const MFSDirectoryEntry *en
         return {};  // Empty fork
     }
     
-    // MFS uses 512-byte blocks, but the allocation block size is specified in the MDB
-    // For now, assume 512-byte allocation blocks (typical for floppies)
-    uint32_t start_offset = start_block * 512;
+    // We need to read the MDB again to get allocation block size
+    block_t mdb_block = source_->read_block(1024, 512);
+    const MFSMasterDirectoryBlock *mdb = static_cast<const MFSMasterDirectoryBlock *>(mdb_block.data());
+    
+    uint32_t alloc_block_size = be32(mdb->drAlBlkSiz);
+    uint16_t first_alloc_block = be16(mdb->drAlBlSt);
+
+    // Calculate the actual disk offset
+    // From MFS spec: "Like FAT, allocation blocks are numbered starting from 2. 
+    // However, unlike FAT, the block map begins with allocation block 2 instead 
+    // of skipping the first two entries."
+    // This means allocation block numbers in directory entries start from 2
+    uint32_t alloc_area_start = first_alloc_block * 512;
+    
+    // Subtract 2 because allocation blocks are numbered starting from 2
+    uint32_t adjusted_alloc_block = (start_block >= 2) ? start_block - 2 : 0;
+    uint32_t start_offset = alloc_area_start + (adjusted_alloc_block * alloc_block_size);
     
     // Read the fork content
     block_t fork_block = source_->read_block(start_offset, fork_size);
@@ -111,10 +114,10 @@ void mfs_partition_t::scan_partition(file_visitor_t &visitor)
             const MFSDirectoryEntry *entry = reinterpret_cast<const MFSDirectoryEntry *>(block_data + offset_in_block);
             uint8_t name_len = entry->deNameLen;
 
-            // Skip empty entries
-            if (name_len == 0 && entry->deFlags == 0) {
-                offset_in_block += sizeof(MFSDirectoryEntry);
-                continue;
+            // Check bit 7 of flags - if clear, no more entries in this block
+            if ((entry->deFlags & 0x80) == 0) {
+                // No more entries in this block per MFS specification
+                break; 
             }
 
             // Check if we have enough space for the complete entry (including name)
@@ -128,12 +131,8 @@ void mfs_partition_t::scan_partition(file_visitor_t &visitor)
                 break;
             }
 
-            // Check if file is in use
-            bool is_in_use = (entry->deFlags & 0x80) ||           // Standard "in use" flag
-                             (entry->deFlags != 0 && name_len > 0) || // Non-zero flags with valid name
-                             (name_len > 0 && name_len <= 63);     // Any entry with valid name length
-            
-            if (is_in_use && name_len > 0 && name_len <= 63) {
+            // Bit 7 is set (valid entry), now check if it's a real file
+            if (name_len > 0 && name_len <= 63) {
                 // Extract filename - it starts right after the fixed structure
                 const uint8_t *name_ptr = block_data + offset_in_block + sizeof(MFSDirectoryEntry);
                 std::string filename(reinterpret_cast<const char *>(name_ptr), name_len);

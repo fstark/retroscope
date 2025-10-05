@@ -26,7 +26,7 @@ class data_source_t
 public:
     virtual std::string description() const = 0;
     virtual ~data_source_t() = default;
-    virtual block_t read_block(uint64_t offset, uint16_t size) = 0;
+    virtual block_t read_block(uint64_t offset, uint64_t size) = 0;
     virtual uint64_t size() const = 0;
 };
 
@@ -59,7 +59,7 @@ public:
         return size_;
     }
 
-    block_t read_block(uint64_t offset, uint16_t size) override
+    block_t read_block(uint64_t offset, uint64_t size) override
     {
         if (offset + size > size_)
         {
@@ -105,7 +105,7 @@ public:
         return size_;
     }
 
-    block_t read_block(uint64_t offset, uint16_t size) override
+    block_t read_block(uint64_t offset, uint64_t size) override
     {
         if (offset + size > size_)
         {

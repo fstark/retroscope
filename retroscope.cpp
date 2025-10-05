@@ -6,6 +6,7 @@
 #include "apm_datasource.h"
 #include "dc42_datasource.h"
 #include "bin_datasource.h"
+#include "rsrc_parser.hpp"
 
 #include <cstdint>
 #include <string>
@@ -262,19 +263,14 @@ public:
 
 class file_printer_t : public file_visitor_t
 {
-public:
-    void visit_file(std::shared_ptr<File> file) override
-    {
-        std::cout << string_from_file(*file) << std::endl;
-
-        // Show first 16 bytes of data fork in hex + ASCII
-        auto data = file->read_data(0, 16);
-        if (!data.empty()) {
-            std::cout << "    ";
+    void dump_data( const std::vector<uint8_t> &data ) {
+        for (size_t offset = 0; offset < data.size(); offset += 16) {
+            std::cout << std::format("    {:08x}: ", offset);
+            
             // Hex dump
             for (size_t i = 0; i < 16; ++i) {
-                if (i < data.size()) {
-                    std::cout << std::format("{:02x} ", data[i]);
+                if (offset + i < data.size()) {
+                    std::cout << std::format("{:02x} ", data[offset + i]);
                 } else {
                     std::cout << "   ";
                 }
@@ -283,12 +279,81 @@ public:
             std::cout << " |";
             
             // ASCII dump
-            for (size_t i = 0; i < 16 && i < data.size(); ++i) {
-                char c = static_cast<char>(data[i]);
+            for (size_t i = 0; i < 16 && offset + i < data.size(); ++i) {
+                char c = static_cast<char>(data[offset + i]);
                 std::cout << (std::isprint(c) ? c : '.');
             }
             
             std::cout << "|" << std::endl;
+        }
+    }
+
+public:
+    void visit_file(std::shared_ptr<File> file) override
+    {
+        std::cout << string_from_file(*file) << std::endl;
+
+        // Show first 16 bytes of data fork in hex + ASCII
+        // auto data = file->read_data_all();
+        // if (data.size()>0)
+        // {
+        //     std::cout << "DATA:" << std::endl;
+        //     dump_data(data);
+        // }
+        // auto rsrc = file->read_rsrc_all();
+        // if (rsrc.size()>0)
+        // {
+        //     std::cout << "RSRC:" << std::endl;
+        //     dump_data(rsrc);
+        // }
+
+        // Dump resource fork if present
+        if (file->rsrc_size() > 0) {
+            auto rsrc_data = file->read_rsrc(0, file->rsrc_size());
+            if (!rsrc_data.empty()) {
+                try {
+                    // Create a read function lambda for the resource parser
+                    auto read_func = [&rsrc_data](uint32_t offset, uint32_t size) -> std::vector<uint8_t> {
+                        if (offset >= rsrc_data.size()) {
+                            return {};
+                        }
+                        uint32_t available = rsrc_data.size() - offset;
+                        uint32_t to_read = std::min(size, available);
+                        return std::vector<uint8_t>(rsrc_data.begin() + offset, 
+                                                   rsrc_data.begin() + offset + to_read);
+                    };
+
+                    // Parse and dump the resource fork
+                    rsrc_parser_t parser(rsrc_data.size(), read_func);
+                    if (parser.is_valid()) {
+                        parser.dump();
+                        
+                        // Test the new get_resources API
+                        try {
+                            auto resources = parser.get_resources();
+                            
+                            // Show a few examples of the new API
+                            int shown = 0;
+                            for (const auto& resource : resources) {
+                                std::cout << std::format("    {} {} ({} bytes)", 
+                                                        resource.type(), resource.id(), resource.size());
+                                if (resource.has_name()) {
+                                    std::cout << std::format(" \"{}\"", resource.name());
+                                }
+                                std::cout << std::endl;
+                                shown++;
+                            }
+                        } catch (const std::exception& e) {
+                            std::cout << std::format("    Error reading resources: {}", e.what()) << std::endl;
+                        }
+                    } else {
+                        std::cout << "    Invalid resource fork" << std::endl;
+                        // Show first 32 bytes of resource fork in hex for debugging
+                    }
+                } catch (const std::exception& e) {
+                    std::cout << "    Error parsing resource fork: " << e.what() << std::endl;
+                }
+            }
         }
     }
 };
@@ -593,12 +658,11 @@ int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        std::cerr << "Usage: " << argv[0] << " {list|diff|dump} <disk_image_file_or_directory> [additional_paths...]\n";
+        std::cerr << "Usage: " << argv[0] << " {list|diff} <disk_image_file_or_directory> [additional_paths...]\n";
         std::cerr << "Analyzes vintage Macintosh HFS disk images and list content.\n";
         std::cerr << "Commands:\n";
         std::cerr << "  list - List files in the disk images\n";
         std::cerr << "  diff - Show files that differ between disk images\n";
-        std::cerr << "  dump - Show detailed file information with hex dump of first 16 bytes\n";
         std::cerr << "If a directory is provided, recursively processes all files in it.\n";
         std::cerr << "Multiple paths can be specified to process them all.\n";
         return 1;
@@ -609,9 +673,9 @@ int main(int argc, char *argv[])
         // Parse command line arguments
         auto [command, flags, paths] = parse_arguments(argc, argv);
 
-        if (command != "list" && command != "diff" && command != "dump")
+        if (command != "list" && command != "diff")
         {
-            std::cerr << "Error: First argument must be 'list', 'diff', or 'dump'\n";
+            std::cerr << "Error: First argument must be 'list' or 'diff'\n";
             return 1;
         }
 

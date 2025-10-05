@@ -19,12 +19,12 @@ stripped_data_source_t::stripped_data_source_t(std::shared_ptr<data_source_t> so
     }
 }
 
-std::vector<uint8_t> stripped_data_source_t::read(uint64_t offset, uint16_t length) const {
+std::vector<uint8_t> stripped_data_source_t::read(uint64_t offset, uint64_t length) const {
     if (offset >= total_data_size_) {
         return {};
     }
     
-    length = std::min((uint64_t)length, total_data_size_ - offset);
+    length = std::min(length, total_data_size_ - offset);
     std::vector<uint8_t> result;
     result.reserve(length);
     
@@ -59,7 +59,7 @@ std::vector<uint8_t> stripped_data_source_t::read(uint64_t offset, uint16_t leng
     return result;
 }
 
-block_t stripped_data_source_t::read_block(uint64_t offset, uint16_t length) {
+block_t stripped_data_source_t::read_block(uint64_t offset, uint64_t length) {
     return block_t(read(offset, length));
 }
 

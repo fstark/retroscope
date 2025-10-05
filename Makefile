@@ -5,7 +5,7 @@ DEPFLAGS = -MMD -MP
 MAKEFLAGS += -j12
 
 TARGET = retroscope
-SOURCES = retroscope.cpp utils.cpp file.cpp file_set.cpp hfs_parser.cpp mfs_parser.cpp apm_datasource.cpp dc42_datasource.cpp stripped_data_source.cpp bin_datasource.cpp
+SOURCES = retroscope.cpp utils.cpp file.cpp file_set.cpp hfs_parser.cpp mfs_parser.cpp apm_datasource.cpp dc42_datasource.cpp stripped_data_source.cpp bin_datasource.cpp rsrc_parser.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 DEPS = $(SOURCES:.cpp=.d)
 

@@ -25,10 +25,10 @@ public:
         return source_->description() + std::format(" [sector={}, skip={}, data={}]", sector_size_, skip_bytes_, data_bytes_);
     }
 
-    block_t read_block(uint64_t offset, uint16_t length) override;
+    block_t read_block(uint64_t offset, uint64_t length) override;
     uint64_t size() const override;
 
 private:
     // Helper method for easier reading
-    std::vector<uint8_t> read(uint64_t offset, uint16_t length) const;
+    std::vector<uint8_t> read(uint64_t offset, uint64_t length) const;
 };
