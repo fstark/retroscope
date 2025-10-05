@@ -468,3 +468,28 @@ public:
 						});
 	}
 };
+
+// HFS-specific File implementation
+class HFSFile : public File
+{
+	// TODO: Add HFS-specific data members (file_t instances, etc.)
+
+public:
+	HFSFile(const std::shared_ptr<Disk> &disk,
+			const std::string &name, const std::string &type,
+			const std::string &creator, uint32_t data_size, uint32_t rsrc_size)
+		: File(disk, name, type, creator, data_size, rsrc_size) {}
+
+	// Virtual read methods - implementation to be added later
+	std::vector<uint8_t> read_data([[maybe_unused]] uint32_t offset = 0, [[maybe_unused]] uint32_t size = UINT32_MAX) override
+	{
+		// TODO: Implement using HFS file_t
+		return {};
+	}
+
+	std::vector<uint8_t> read_rsrc([[maybe_unused]] uint32_t offset = 0, [[maybe_unused]] uint32_t size = UINT32_MAX) override
+	{
+		// TODO: Implement using HFS file_t
+		return {};
+	}
+};

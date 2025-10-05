@@ -357,7 +357,7 @@ void hfs_partition_t::build_root_folder()
 #endif
         } else if (file_record) {
             // This is a file
-            std::shared_ptr<File> file = std::make_shared<File>(
+            std::shared_ptr<File> file = std::make_shared<HFSFile>(
                 disk,
                 from_macroman(catalog_record->name()),
                 file_record->type(),

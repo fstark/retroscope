@@ -266,36 +266,60 @@ public:
     void visit_file(std::shared_ptr<File> file) override
     {
         std::cout << string_from_file(*file) << std::endl;
+
+        // Show first 16 bytes of data fork in hex + ASCII
+        auto data = file->read_data(0, 16);
+        if (!data.empty()) {
+            std::cout << "    ";
+            // Hex dump
+            for (size_t i = 0; i < 16; ++i) {
+                if (i < data.size()) {
+                    std::cout << std::format("{:02x} ", data[i]);
+                } else {
+                    std::cout << "   ";
+                }
+            }
+            
+            std::cout << " |";
+            
+            // ASCII dump
+            for (size_t i = 0; i < 16 && i < data.size(); ++i) {
+                char c = static_cast<char>(data[i]);
+                std::cout << (std::isprint(c) ? c : '.');
+            }
+            
+            std::cout << "|" << std::endl;
+        }
     }
 };
 
-class dump_visitor_t : public file_visitor_t
-{
-    size_t indent_ = 0;
+// class dump_visitor_t : public file_visitor_t
+// {
+//     size_t indent_ = 0;
 
-public:
-    void visit_file(std::shared_ptr<File> file) override
-    {
-        std::string indent_str(static_cast<size_t>(indent_ * 2), ' ');
-        std::cout << indent_str << "File: " << file->name()
-                  << " (" << file->type() << "/" << file->creator() << ")"
-                  << " DATA: " << file->data_size() << " bytes"
-                  << " RSRC: " << file->rsrc_size() << " bytes" << std::endl;
-    }
+// public:
+//     void visit_file(std::shared_ptr<File> file) override
+//     {
+//         std::string indent_str(static_cast<size_t>(indent_ * 2), ' ');
+//         std::cout << indent_str << "File: " << file->name()
+//                   << " (" << file->type() << "/" << file->creator() << ")"
+//                   << " DATA: " << file->data_size() << " bytes"
+//                   << " RSRC: " << file->rsrc_size() << " bytes" << std::endl;
+//     }
 
-    bool pre_visit_folder(std::shared_ptr<Folder> folder) override
-    {
-        std::string indent_str(static_cast<size_t>(indent_ * 2), ' ');
-        std::cout << indent_str << "Folder: " << folder->name() << std::endl;
-        indent_++;
-        return true;
-    }
+//     bool pre_visit_folder(std::shared_ptr<Folder> folder) override
+//     {
+//         std::string indent_str(static_cast<size_t>(indent_ * 2), ' ');
+//         std::cout << indent_str << "Folder: " << folder->name() << std::endl;
+//         indent_++;
+//         return true;
+//     }
 
-    void post_visit_folder(std::shared_ptr<Folder>) override
-    {
-        indent_--;
-    }
-};
+//     void post_visit_folder(std::shared_ptr<Folder>) override
+//     {
+//         indent_--;
+//     }
+// };
 
 // Template function to get arguments from flags map with type conversion
 template <typename T>
@@ -569,8 +593,12 @@ int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        std::cerr << "Usage: " << argv[0] << " <disk_image_file_or_directory> [additional_paths...]\n";
+        std::cerr << "Usage: " << argv[0] << " {list|diff|dump} <disk_image_file_or_directory> [additional_paths...]\n";
         std::cerr << "Analyzes vintage Macintosh HFS disk images and list content.\n";
+        std::cerr << "Commands:\n";
+        std::cerr << "  list - List files in the disk images\n";
+        std::cerr << "  diff - Show files that differ between disk images\n";
+        std::cerr << "  dump - Show detailed file information with hex dump of first 16 bytes\n";
         std::cerr << "If a directory is provided, recursively processes all files in it.\n";
         std::cerr << "Multiple paths can be specified to process them all.\n";
         return 1;
@@ -581,9 +609,9 @@ int main(int argc, char *argv[])
         // Parse command line arguments
         auto [command, flags, paths] = parse_arguments(argc, argv);
 
-        if (command != "list" && command != "diff")
+        if (command != "list" && command != "diff" && command != "dump")
         {
-            std::cerr << "Error: First argument must be 'list' or 'diff'\n";
+            std::cerr << "Error: First argument must be 'list', 'diff', or 'dump'\n";
             return 1;
         }
 

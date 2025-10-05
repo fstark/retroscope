@@ -29,7 +29,7 @@ public:
 	File(const std::shared_ptr<Disk> &disk,
 		 const std::string &name, const std::string &type,
 		 const std::string &creator, uint32_t data_size, uint32_t rsrc_size);
-	~File();
+	virtual ~File();
 	const std::shared_ptr<Disk> &disk() const { return disk_; }
 	const std::string &name() const { return sane_name_; }
 	const std::string &type() const { return type_; }
@@ -42,6 +42,14 @@ public:
 	void retain_folder();
 	// concatenation of name, type, creator, datasize and rscsize
 	std::string key() const { return std::format( "{}|{}|{}|{}|{}", name_, type_, creator_, data_size_, rsrc_size_); }
+
+	// Virtual read methods for partial file access
+	virtual std::vector<uint8_t> read_data(uint32_t offset = 0, uint32_t size = UINT32_MAX) = 0;
+	virtual std::vector<uint8_t> read_rsrc(uint32_t offset = 0, uint32_t size = UINT32_MAX) = 0;
+	
+	// Convenience methods
+	std::vector<uint8_t> read_data_all() { return read_data(0, data_size_); }
+	std::vector<uint8_t> read_rsrc_all() { return read_rsrc(0, rsrc_size_); }
 };
 
 class Folder : public std::enable_shared_from_this<Folder>

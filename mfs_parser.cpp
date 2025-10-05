@@ -1,7 +1,11 @@
 #include "mfs_parser.h"
 
 #define noVERBOSE
-#ifndef VERBOSE
+#ifdef VERBOSE
+// rs_log is already defined in utils.h, don't redefine it
+#undef ENTRY
+#define ENTRY(...)
+#else
 #undef ENTRY
 #define ENTRY(...)
 #define rs_log(...)
@@ -30,6 +34,35 @@ mfs_partition_t::mfs_partition_t(std::shared_ptr<data_source_t> source)
 {
 }
 
+std::vector<uint8_t> mfs_partition_t::read_file_fork(const MFSDirectoryEntry *entry, bool is_resource_fork) const
+{
+    // Get the starting block and length for the appropriate fork
+    uint16_t start_block = is_resource_fork ? be16(entry->deRsrcABlk) : be16(entry->deDataABlk);
+    uint32_t fork_size = is_resource_fork ? be32(entry->deRsrcLen) : be32(entry->deDataLen);
+    
+    if (fork_size == 0) {
+        return {};  // Empty fork
+    }
+    
+    // MFS uses 512-byte blocks, but the allocation block size is specified in the MDB
+    // For now, assume 512-byte allocation blocks (typical for floppies)
+    uint32_t start_offset = start_block * 512;
+    
+    // Read the fork content
+    block_t fork_block = source_->read_block(start_offset, fork_size);
+    const uint8_t* fork_data = static_cast<const uint8_t*>(fork_block.data());
+    
+    return std::vector<uint8_t>(fork_data, fork_data + fork_size);
+}
+
+std::pair<std::vector<uint8_t>, std::vector<uint8_t>> mfs_partition_t::read_file_content(const MFSDirectoryEntry *entry) const
+{
+    auto data_fork = read_file_fork(entry, false);   // Data fork
+    auto rsrc_fork = read_file_fork(entry, true);    // Resource fork
+    
+    return {std::move(data_fork), std::move(rsrc_fork)};
+}
+
 void mfs_partition_t::scan_partition(file_visitor_t &visitor)
 {
     ENTRY("");
@@ -53,44 +86,60 @@ void mfs_partition_t::scan_partition(file_visitor_t &visitor)
 
     // Calculate directory offset (dir_start is in 512-byte blocks)
     uint32_t dir_offset = dir_start * 512;
-    uint32_t dir_size = dir_length * 512;
 
-    // Read the entire directory
-    block_t dir_block = source_->read_block(dir_offset, dir_size);
-    const uint8_t *dir_data = static_cast<const uint8_t *>(dir_block.data());
-
-    // Parse variable-length directory entries
-    size_t offset = 0;
+    // Parse directory block by block (512 bytes each)
     size_t entries_found = 0;
-
+    
     rs_log("Scanning MFS directory: {} files, dir_start={}, dir_length={}", be16(mdb->drNmFls), dir_start, dir_length);
+    
+    for (uint16_t block_num = 0; block_num < dir_length; block_num++) {
+        uint32_t block_offset = dir_offset + (block_num * 512);
+        block_t dir_block = source_->read_block(block_offset, 512);
+        const uint8_t *block_data = static_cast<const uint8_t *>(dir_block.data());
+        
+        rs_log("Scanning MFS directory block {} at offset {}", block_num, block_offset);
+        
+        // Parse entries within this 512-byte block
+        size_t offset_in_block = 0;
+        
+        while (offset_in_block < 512) {
+            // Ensure we have at least the fixed part of a directory entry
+            if (offset_in_block + sizeof(MFSDirectoryEntry) > 512) {
+                break;
+            }
 
-    while (offset < dir_size)
-    {
-        // Ensure we have at least the fixed part of a directory entry
-        if (offset + sizeof(MFSDirectoryEntry) > dir_size)
-        {
-            break;
-        }
+            const MFSDirectoryEntry *entry = reinterpret_cast<const MFSDirectoryEntry *>(block_data + offset_in_block);
+            uint8_t name_len = entry->deNameLen;
 
-        const MFSDirectoryEntry *entry = reinterpret_cast<const MFSDirectoryEntry *>(dir_data + offset);
+            // Skip empty entries
+            if (name_len == 0 && entry->deFlags == 0) {
+                offset_in_block += sizeof(MFSDirectoryEntry);
+                continue;
+            }
 
-        // Name length is at the end of the fixed structure
-        uint8_t name_len = entry->deNameLen;
+            // Check if we have enough space for the complete entry (including name)
+            size_t total_entry_size = sizeof(MFSDirectoryEntry) + name_len;
+            if (total_entry_size & 1) {
+                total_entry_size++; // Pad to even boundary
+            }
+            
+            if (offset_in_block + total_entry_size > 512) {
+                // Entry would cross block boundary, skip to next block
+                break;
+            }
 
-        // Check if file is in use (bit 7 of deFlags)
-        if (entry->deFlags & 0x80)
-        {
-            rs_log("Directory entry at offset {}: flags=0x{:02x}, name_len={}", offset, entry->deFlags, name_len);
-
-            if (name_len > 0 && name_len <= 63)
-            {
+            // Check if file is in use
+            bool is_in_use = (entry->deFlags & 0x80) ||           // Standard "in use" flag
+                             (entry->deFlags != 0 && name_len > 0) || // Non-zero flags with valid name
+                             (name_len > 0 && name_len <= 63);     // Any entry with valid name length
+            
+            if (is_in_use && name_len > 0 && name_len <= 63) {
                 // Extract filename - it starts right after the fixed structure
-                const uint8_t *name_ptr = dir_data + offset + sizeof(MFSDirectoryEntry);
+                const uint8_t *name_ptr = block_data + offset_in_block + sizeof(MFSDirectoryEntry);
                 std::string filename(reinterpret_cast<const char *>(name_ptr), name_len);
                 filename = from_macroman(filename);
 
-                rs_log("Found file: '{}'", filename);
+                rs_log("Found file: '{}' (flags=0x{:02x})", filename, entry->deFlags);
 
                 // Extract type and creator (stored in big-endian format)
                 std::string type = string_from_code(be32(entry->deType));
@@ -102,34 +151,21 @@ void mfs_partition_t::scan_partition(file_visitor_t &visitor)
                 rs_log("  Type: {}, Creator: {}, Data: {} bytes, Resource: {} bytes",
                        type, creator, data_size, rsrc_size);
 
-                // Create File object
-                auto file = std::make_shared<File>(disk, filename, type, creator, data_size, rsrc_size);
+                // Read the actual file content
+                auto [data_content, rsrc_content] = read_file_content(entry);
+
+                // Create MFSFile object with actual data
+                auto file = std::make_shared<MFSFile>(disk, filename, type, creator, data_size, rsrc_size,
+                                                      std::move(data_content), std::move(rsrc_content));
 
                 // Add file to root folder
                 root_folder->add_file(file);
                 entries_found++;
             }
-            else
-            {
-                rs_log("  Invalid name length: {}", name_len);
-            }
+            
+            // Move to next entry
+            offset_in_block += total_entry_size;
         }
-
-        // Calculate total entry size: fixed part + name + padding to even
-        size_t entry_size = sizeof(MFSDirectoryEntry) + name_len;
-        if (entry_size & 1)
-        {
-            entry_size++; // Pad to even boundary
-        }
-
-        // Check if the complete entry fits in the directory
-        if (offset + entry_size > dir_size)
-        {
-            rs_log("Entry at offset {} extends beyond directory, stopping", offset);
-            break;
-        }
-
-        offset += entry_size;
     }
 
     rs_log("Found {} files in use", entries_found);
