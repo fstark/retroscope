@@ -20,6 +20,7 @@ Retroscope has been created to become a tool that pull all the info from directo
 ## TODO
 
 * Folder path printed incorrectly, missing file component
+* Add a diff mode
 
 ## How to use?
 

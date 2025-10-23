@@ -256,7 +256,7 @@ public:
     }
     bool is_excluded(const std::shared_ptr<File> &file) const
     {
-        rs_log("Checking exclusion for file key: {}", file->key());
+        // rs_log("Checking exclusion for file key: {}", file->key());
         return exclude_keys_.find(file->key()) != exclude_keys_.end();
     }
 };

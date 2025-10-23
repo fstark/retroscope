@@ -376,7 +376,11 @@ class btree_file_t
 public:
 	btree_file_t(hfs_file_t &file);
 
-	//	Callback gets a btree_leaf_node_t&
+	//	This will iterate all the leaf nodes in the btree
+	//	and call the callback for each one
+	//	with a btree_leaf_node_t& as parameter
+	//	To perform the iteration, it uses the fLink field
+	//	of each leaf node to find the next one
 	template <typename F>
 	void iterate_leaves(F &&callback)
 	{
@@ -406,7 +410,10 @@ public:
 		}
 	}
 
-	//	Callback gets a uint8_t pointer to records
+	//	This iterates all records in the btree
+	//	Using the iterate_leaves function
+	//	In each leaf, it iterates all records
+	//	Callback gets a uint8_t pointer to records and its size
 	template <typename F>
 	void iterate_records(F &&callback)
 	{

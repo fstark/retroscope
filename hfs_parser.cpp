@@ -329,10 +329,11 @@ void hfs_partition_t::build_root_folder()
 
     std::vector<hierarchy_t> hierarchy;
 
+    // As files needs folders to be retained, we first create all folders
     catalog_btree.iterate_catalog([&](
                                       const catalog_record_t *catalog_record,
                                       const catalog_record_folder_t *folder_record,
-                                      const catalog_record_file_t *file_record)
+                                      const catalog_record_file_t *)
                                   {
 
         // Skip records with parent ID 1 (these are special system records)
@@ -355,7 +356,26 @@ void hfs_partition_t::build_root_folder()
             std::cout << std::format("Folder: {} (ID: {}, Parent: {})\n", 
                                     catalog_record->name(), folder_id, parent_id);
 #endif
-        } else if (file_record) {
+        }
+    }
+    );
+
+    
+    // We then do all the files
+    catalog_btree.iterate_catalog([&](
+                                      const catalog_record_t *catalog_record,
+                                      const catalog_record_folder_t *,
+                                      const catalog_record_file_t *file_record)
+                                  {
+
+        // Skip records with parent ID 1 (these are special system records)
+        if (catalog_record->parent_id() == 1) {
+            return;
+        }
+
+        auto parent_id = catalog_record->parent_id();
+
+        if (file_record) {
             // This is a file
             std::shared_ptr<File> file = std::make_shared<HFSFile>(
                 disk,
@@ -365,10 +385,16 @@ void hfs_partition_t::build_root_folder()
                 file_record->dataLogicalSize(),
                 file_record->rsrcLogicalSize());
 
-            // Find parent folder and add file to it
+                // Find parent folder and add file to it
             auto parent_it = folders.find(parent_id);
             if (parent_it != folders.end()) {
                 parent_it->second->add_file(file);
+            }
+            else
+            {
+                std::cerr << std::format("Warning: Parent folder ID {} not found for file {}\n",
+                                         parent_id,
+                                         catalog_record->name());
             }
 
 #ifdef VERBOSE
