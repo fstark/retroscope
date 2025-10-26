@@ -1,12 +1,12 @@
 #include "mfs_partition.h"
 
 // mfs_partition_t implementation
-mfs_partition_t::mfs_partition_t(std::shared_ptr<data_source_t> source)
+mfs_partition_t::mfs_partition_t(std::shared_ptr<datasource_t> source)
     : source_(source), root_folder_(nullptr)
 {
 }
 
-bool mfs_partition_t::is_mfs(std::shared_ptr<data_source_t> source)
+bool mfs_partition_t::is_mfs(std::shared_ptr<datasource_t> source)
 {
     // Need at least 1024 + some bytes to check for MFS MDB at offset 1024
     if (source->size() < 1536)

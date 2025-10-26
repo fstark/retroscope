@@ -1,7 +1,7 @@
-#include "stripped_data_source.h"
+#include "data/stripped_datasource.h"
 #include <algorithm>
 
-stripped_data_source_t::stripped_data_source_t(std::shared_ptr<data_source_t> source, 
+stripped_datasource_t::stripped_datasource_t(std::shared_ptr<datasource_t> source, 
                                                size_t sector_size, 
                                                size_t skip_bytes, 
                                                size_t data_bytes)
@@ -19,7 +19,7 @@ stripped_data_source_t::stripped_data_source_t(std::shared_ptr<data_source_t> so
     }
 }
 
-std::vector<uint8_t> stripped_data_source_t::read(uint64_t offset, uint64_t length) const {
+std::vector<uint8_t> stripped_datasource_t::read(uint64_t offset, uint64_t length) const {
     if (offset >= total_data_size_) {
         return {};
     }
@@ -59,10 +59,10 @@ std::vector<uint8_t> stripped_data_source_t::read(uint64_t offset, uint64_t leng
     return result;
 }
 
-block_t stripped_data_source_t::read_block(uint64_t offset, uint64_t length) {
+block_t stripped_datasource_t::read_block(uint64_t offset, uint64_t length) {
     return block_t(read(offset, length));
 }
 
-uint64_t stripped_data_source_t::size() const {
+uint64_t stripped_datasource_t::size() const {
     return total_data_size_;
 }

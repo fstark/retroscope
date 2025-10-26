@@ -1,5 +1,5 @@
-#include "hfs_fork.h"
-#include "hfs_partition.h"
+#include "hfs/hfs_fork.h"
+#include "hfs/hfs_partition.h"
 #include <algorithm>
 
 hfs_fork_t::hfs_fork_t(const hfs_file_t* file, uint32_t logical_size)

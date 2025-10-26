@@ -1,5 +1,5 @@
-#include "bin_datasource.h"
-#include "stripped_data_source.h"
+#include "data/bin_datasource.h"
+#include "data/stripped_datasource.h"
 #include <format>
 #include <iostream>
 
@@ -18,7 +18,7 @@ static const std::vector<uint8_t> CDROM_SYNC_PATTERN = {
     0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00
 };
 
-bool is_bin_file(std::shared_ptr<data_source_t> source) {
+bool is_bin_file(std::shared_ptr<datasource_t> source) {
     if (source->size() < CDROM_SECTOR_SIZE) {
         return false;
     }
@@ -45,13 +45,13 @@ bool is_bin_file(std::shared_ptr<data_source_t> source) {
     return true;
 }
 
-std::shared_ptr<data_source_t> make_bin_data_source(std::shared_ptr<data_source_t> source) {
+std::shared_ptr<datasource_t> make_bin_datasource(std::shared_ptr<datasource_t> source) {
     if (!is_bin_file(source)) {
         return source;  // Not a BIN file, return original
     }
     
     // Create stripped data source that extracts just the data portion
-    return std::make_shared<stripped_data_source_t>(source, 
+    return std::make_shared<stripped_datasource_t>(source, 
                                                    CDROM_SECTOR_SIZE, 
                                                    CDROM_SYNC_HEADER_SIZE, 
                                                    CDROM_DATA_SIZE);

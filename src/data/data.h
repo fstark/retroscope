@@ -21,23 +21,23 @@ public:
 };
 
 //  The interface to a data source
-class data_source_t
+class datasource_t
 {
 public:
     virtual std::string description() const = 0;
-    virtual ~data_source_t() = default;
+    virtual ~datasource_t() = default;
     virtual block_t read_block(uint64_t offset, uint64_t size) = 0;
     virtual uint64_t size() const = 0;
 };
 
-class file_data_source_t : public data_source_t
+class file_datasource_t : public datasource_t
 {
     std::ifstream file_;
     uint64_t size_;
     std::string description_;
 
 public:
-    file_data_source_t(const std::filesystem::path &file_path)
+    file_datasource_t(const std::filesystem::path &file_path)
         : file_(file_path, std::ios::binary)
     {
         description_ = file_path.string();
@@ -79,14 +79,14 @@ public:
     }
 };
 
-class range_data_source_t : public data_source_t
+class range_datasource_t : public datasource_t
 {
-    std::shared_ptr<data_source_t> source_;
+    std::shared_ptr<datasource_t> source_;
     uint64_t offset_;
     uint64_t size_;
 
 public:
-    range_data_source_t(std::shared_ptr<data_source_t> source, uint64_t offset, uint64_t size)
+    range_datasource_t(std::shared_ptr<datasource_t> source, uint64_t offset, uint64_t size)
         : source_(std::move(source)), offset_(offset), size_(size)
     {
         if (offset + size > source_->size())

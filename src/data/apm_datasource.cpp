@@ -1,4 +1,4 @@
-#include "apm_datasource.h"
+#include "data/apm_datasource.h"
 #include <cstring>
 #include <iostream>
 
@@ -15,7 +15,7 @@ struct ApplePartitionMapEntry
     // ... other fields not needed for basic parsing
 };
 
-static bool isAPM(std::shared_ptr<data_source_t> source)
+static bool isAPM(std::shared_ptr<datasource_t> source)
 {
     // Need at least 1024 bytes (2 blocks) to check for APM
     if (source->size() < 1024)
@@ -32,9 +32,9 @@ static bool isAPM(std::shared_ptr<data_source_t> source)
     return signature == 0x504D;
 }
 
-std::vector<std::shared_ptr<data_source_t>> make_apm_data_source(std::shared_ptr<data_source_t> source)
+std::vector<std::shared_ptr<datasource_t>> make_apm_datasource(std::shared_ptr<datasource_t> source)
 {
-    std::vector<std::shared_ptr<data_source_t>> partitions;
+    std::vector<std::shared_ptr<datasource_t>> partitions;
 
     if (!isAPM(source))
     {
@@ -73,7 +73,7 @@ std::vector<std::shared_ptr<data_source_t>> make_apm_data_source(std::shared_ptr
         // Validate partition bounds
         if (startOffset + size <= source->size())
         {
-            auto partition_source = std::make_shared<range_data_source_t>(source, startOffset, size);
+            auto partition_source = std::make_shared<range_datasource_t>(source, startOffset, size);
             partitions.push_back(partition_source);
         }
     }

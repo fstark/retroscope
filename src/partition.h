@@ -2,11 +2,12 @@
 
 #include <memory>
 #include <string>
-#include "data.h"
-#include "file.h"
+#include <vector>
+#include "data/data.h"
+#include "file/file.h"
+#include "file/file_visitor.h"
 
-class file_visitor_t;
-class data_source_t;
+class datasource_t;
 
 /**
  * Abstract base class for filesystem partitions.
@@ -28,21 +29,21 @@ public:
      * @param source The data source to analyze
      * @return Unique pointer to the appropriate partition implementation, or nullptr if not recognized
      */
-    static std::unique_ptr<partition_t> create(std::shared_ptr<data_source_t> source);
+    static std::unique_ptr<partition_t> create(std::shared_ptr<datasource_t> source);
 
     /**
      * Check if a data source contains an HFS partition.
      * @param source The data source to check
      * @return True if HFS partition detected
      */
-    static bool is_hfs(std::shared_ptr<data_source_t> source);
+    static bool is_hfs(std::shared_ptr<datasource_t> source);
 
     /**
      * Check if a data source contains an MFS partition.
      * @param source The data source to check
      * @return True if MFS partition detected
      */
-    static bool is_mfs(std::shared_ptr<data_source_t> source);
+    static bool is_mfs(std::shared_ptr<datasource_t> source);
 
 protected:
     partition_t() = default;

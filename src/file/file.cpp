@@ -1,4 +1,5 @@
-#include "file.h"
+#include "file/file.h"
+#include "file/folder.h"
 #include "utils.h"
 
 #include <iostream>
@@ -79,80 +80,4 @@ std::vector<uint8_t> File::read_rsrc(uint32_t offset, uint32_t size)
         size = rsrc_fork_->size() - offset;
     }
     return rsrc_fork_->read(offset, size);
-}
-
-#ifdef DEBUG_MEMORY
-static int sFolderCount = 0;
-#endif
-
-Folder::Folder(const std::string &name) : name_(name), sane_name_(sanitize_string(name)), parent_(nullptr)
-{
-#ifdef DEBUG_MEMORY
-    sFolderCount++;
-#endif
-}
-
-Folder::~Folder()
-{
-#ifdef DEBUG_MEMORY
-    sFolderCount--;
-    if (sFolderCount==0)
-        std::cout << std::format("**** All Folder deleted\n");
-#endif
-}
-
-void Folder::add_file(std::shared_ptr<File> file)
-{
-    // std::cout << "Adding file '" << file->name() << "' to folder '" << name_ << "'\n";
-    if (file->parent() != nullptr)
-    {
-        throw std::runtime_error("File '" + file->name() + "' is already in a folder");
-    }
-    file->set_parent(this);
-    files_.push_back(file);
-}
-
-void Folder::add_folder(std::shared_ptr<Folder> folder)
-{
-    if (folder->parent() != nullptr)
-    {
-        throw std::runtime_error("Folder '" + folder->name() + "' is already in a folder");
-    }
-    folder->set_parent(this);
-    folders_.push_back(folder);
-}
-
-void visit_folder(std::shared_ptr<Folder> folder, file_visitor_t &visitor)
-{
-    if (visitor.pre_visit_folder(folder))
-    {
-        for (const auto &file : folder->files())
-        {
-            visitor.visit_file(file);
-        }
-        for (const auto &subfolder : folder->folders())
-        {
-            visit_folder(subfolder, visitor);
-        }
-        visitor.post_visit_folder(folder);
-    }
-}
-
-std::string path_string(const std::vector<std::shared_ptr<Folder>> &path_vector)
-{
-    if (path_vector.empty())
-    {
-        return "";
-    }
-
-    std::string result;
-    for (size_t i = 0; i < path_vector.size(); ++i)
-    {
-        if (i > 0)
-        {
-            result += ":";
-        }
-        result += path_vector[i]->name();
-    }
-    return result;
 }

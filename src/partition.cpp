@@ -1,9 +1,9 @@
 #include "partition.h"
-#include "hfs_partition.h"
-#include "mfs_partition.h"
+#include "hfs/hfs_partition.h"
+#include "mfs/mfs_partition.h"
 #include "utils.h"
 
-std::unique_ptr<partition_t> partition_t::create(std::shared_ptr<data_source_t> source)
+std::unique_ptr<partition_t> partition_t::create(std::shared_ptr<datasource_t> source)
 {
     ENTRY("");
 
@@ -23,12 +23,12 @@ std::unique_ptr<partition_t> partition_t::create(std::shared_ptr<data_source_t> 
     return nullptr;
 }
 
-bool partition_t::is_hfs(std::shared_ptr<data_source_t> source)
+bool partition_t::is_hfs(std::shared_ptr<datasource_t> source)
 {
     return hfs_partition_t::is_hfs(source);
 }
 
-bool partition_t::is_mfs(std::shared_ptr<data_source_t> source)
+bool partition_t::is_mfs(std::shared_ptr<datasource_t> source)
 {
     return mfs_partition_t::is_mfs(source);
 }

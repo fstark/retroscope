@@ -1,4 +1,4 @@
-#include "dc42_datasource.h"
+#include "data/dc42_datasource.h"
 #include <cstring>
 #include <iostream>
 
@@ -15,7 +15,7 @@ struct DC42Header
     uint8_t reserved[2];     // 0x52..0x53
 };
 
-static bool isDC42(std::shared_ptr<data_source_t> source)
+static bool isDC42(std::shared_ptr<datasource_t> source)
 {
     // Need at least 84 bytes for header
     if (source->size() < 84)
@@ -63,7 +63,7 @@ static bool isDC42(std::shared_ptr<data_source_t> source)
     return true;
 }
 
-std::shared_ptr<data_source_t> make_dc42_data_source(std::shared_ptr<data_source_t> source)
+std::shared_ptr<datasource_t> make_dc42_datasource(std::shared_ptr<datasource_t> source)
 {
     if (!isDC42(source))
     {
@@ -76,5 +76,5 @@ std::shared_ptr<data_source_t> make_dc42_data_source(std::shared_ptr<data_source
     uint64_t dc42_header_size = 84;
     uint64_t data_size = source->size() - dc42_header_size;
 
-    return std::make_shared<range_data_source_t>(source, dc42_header_size, data_size);
+    return std::make_shared<range_datasource_t>(source, dc42_header_size, data_size);
 }

@@ -1,11 +1,14 @@
 #include "retroscope.h"
-#include "data.h"
+#include "data/data.h"
 #include "partition.h"
-#include "file_set.h"
-#include "apm_datasource.h"
-#include "dc42_datasource.h"
-#include "bin_datasource.h"
-#include "rsrc_parser.hpp"
+#include "file/file_set.h"
+#include "file/disk.h"
+#include "file/folder.h"
+#include "file/file_visitor.h"
+#include "data/apm_datasource.h"
+#include "data/dc42_datasource.h"
+#include "data/bin_datasource.h"
+#include "rsrc/rsrc_parser.hpp"
 
 #include <cstdint>
 #include <string>
@@ -446,10 +449,10 @@ std::string get_arg<std::string>(const std::map<std::string, std::string> &flags
     return it->second;
 }
 
-bool replace_source(const std::shared_ptr<data_source_t> source, std::vector<std::shared_ptr<data_source_t>> &result)
+bool replace_source(const std::shared_ptr<datasource_t> source, std::vector<std::shared_ptr<datasource_t>> &result)
 {
     // Try BIN unwrapping (CD-ROM format)
-    auto bin_source = make_bin_data_source(source);
+    auto bin_source = make_bin_datasource(source);
     if (bin_source != source)
     {
         result.push_back(bin_source);
@@ -457,7 +460,7 @@ bool replace_source(const std::shared_ptr<data_source_t> source, std::vector<std
     }
 
     // Try DC42 unwrapping
-    auto dc42_source = make_dc42_data_source(source);
+    auto dc42_source = make_dc42_datasource(source);
     if (dc42_source != source)
     {
         result.push_back(dc42_source);
@@ -465,7 +468,7 @@ bool replace_source(const std::shared_ptr<data_source_t> source, std::vector<std
     }
 
     // Try APM expansion
-    auto apm_partitions = make_apm_data_source(source);
+    auto apm_partitions = make_apm_datasource(source);
     if (!apm_partitions.empty())
     {
         rs_log("Found Apple Partition Map with {} partitions", apm_partitions.size());
@@ -481,11 +484,11 @@ bool replace_source(const std::shared_ptr<data_source_t> source, std::vector<std
     return false;
 }
 
-std::vector<std::shared_ptr<data_source_t>> expand_source(const std::shared_ptr<data_source_t> file_source)
+std::vector<std::shared_ptr<datasource_t>> expand_source(const std::shared_ptr<datasource_t> file_source)
 {
     ENTRY("{}", file_source->description());
 
-    std::vector<std::shared_ptr<data_source_t>> sources = {file_source};
+    std::vector<std::shared_ptr<datasource_t>> sources = {file_source};
 
     bool changed;
 
@@ -493,7 +496,7 @@ std::vector<std::shared_ptr<data_source_t>> expand_source(const std::shared_ptr<
     do
     {
         changed = false;
-        std::vector<std::shared_ptr<data_source_t>> results;
+        std::vector<std::shared_ptr<datasource_t>> results;
         for (auto &source : sources)
         {
             changed |= replace_source(source, results);
@@ -514,7 +517,7 @@ void process_disk_image(const std::filesystem::path &filepath, file_visitor_t &v
     ENTRY("{}", filepath.string());
 
     // Create initial data source
-    auto file_source = std::make_shared<file_data_source_t>(filepath);
+    auto file_source = std::make_shared<file_datasource_t>(filepath);
     rs_log("Analyzing disk image: {} ({})", filepath.c_str(), file_source->size());
 
     auto sources = expand_source(file_source);

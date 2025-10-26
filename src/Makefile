@@ -1,11 +1,11 @@
 CXX = g++
-CXXFLAGS = -std=c++23 -Wall -Wextra -O2 -g
-# CXXFLAGS = -std=c++23 -Wall -Wextra -O0 -g
+CXXFLAGS = -std=c++23 -Wall -Wextra -O2 -g -I.
+# CXXFLAGS = -std=c++23 -Wall -Wextra -O0 -g -I.
 DEPFLAGS = -MMD -MP
 MAKEFLAGS += -j12
 
 TARGET = retroscope
-SOURCES = retroscope.cpp utils.cpp file.cpp file_set.cpp partition.cpp hfs_partition.cpp hfs_fork.cpp mfs_partition.cpp apm_datasource.cpp dc42_datasource.cpp stripped_data_source.cpp bin_datasource.cpp rsrc_parser.cpp
+SOURCES = retroscope.cpp utils.cpp file/file.cpp file/folder.cpp file/disk.cpp file/file_visitor.cpp file/file_set.cpp partition.cpp hfs/hfs_partition.cpp hfs/hfs_fork.cpp mfs/mfs_partition.cpp data/apm_datasource.cpp data/dc42_datasource.cpp data/stripped_datasource.cpp data/bin_datasource.cpp rsrc/rsrc_t.cpp rsrc/rsrc_parser.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 DEPS = $(SOURCES:.cpp=.d)
 
