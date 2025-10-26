@@ -8,7 +8,8 @@
 #include "data/apm_datasource.h"
 #include "data/dc42_datasource.h"
 #include "data/bin_datasource.h"
-#include "rsrc/rsrc_parser.hpp"
+#include "rsrc/rsrc.h"
+#include "rsrc/rsrc_parser.h"
 
 #include <cstdint>
 #include <string>
