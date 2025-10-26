@@ -27,9 +27,9 @@ public:
      * Factory method to create the appropriate partition type based on the data source.
      * Automatically detects whether the partition is MFS or HFS.
      * @param source The data source to analyze
-     * @return Unique pointer to the appropriate partition implementation, or nullptr if not recognized
+     * @return Shared pointer to the appropriate partition implementation, or nullptr if not recognized
      */
-    static std::unique_ptr<partition_t> create(std::shared_ptr<datasource_t> source);
+    static std::shared_ptr<partition_t> create(std::shared_ptr<datasource_t> source);
 
     /**
      * Check if a data source contains an HFS partition.

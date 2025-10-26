@@ -1,6 +1,7 @@
 #include "file/file.h"
 #include "file/folder.h"
 #include "utils.h"
+#include "utils/md5.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -80,4 +81,42 @@ std::vector<uint8_t> File::read_rsrc(uint32_t offset, uint32_t size)
         size = rsrc_fork_->size() - offset;
     }
     return rsrc_fork_->read(offset, size);
+}
+
+std::string File::content_key() const
+{
+    // Calculate MD5 of data fork
+    std::string data_md5 = "0";  // Default for empty data fork
+    if (data_size_ > 0) {
+        try {
+            auto data = read_data_all();
+            if (!data.empty()) {
+                std::string data_str(data.begin(), data.end());
+                data_md5 = MD5(data_str).toStr();
+            }
+        } catch (const std::exception& e) {
+            // If we can't read the data, use a hash based on the error
+            data_md5 = std::format("error_{}", data_size_);
+        }
+    }
+    
+    // Calculate MD5 of resource fork  
+    std::string rsrc_md5 = "0";  // Default for empty resource fork
+    if (rsrc_size_ > 0) {
+        try {
+            auto rsrc = read_rsrc_all();
+            if (!rsrc.empty()) {
+                std::string rsrc_str(rsrc.begin(), rsrc.end());
+                rsrc_md5 = MD5(rsrc_str).toStr();
+            } else {
+            }
+        } catch (const std::exception& e) {
+            // If we can't read the resource, use a hash based on the error
+            rsrc_md5 = std::format("error_{}", rsrc_size_);
+        }
+    }
+    
+    // Return enhanced key with content hashes
+    return std::format("{}|{}|{}|{}|{}|{}|{}", 
+                       name_, type_, creator_, data_size_, rsrc_size_, data_md5, rsrc_md5);
 }

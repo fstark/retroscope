@@ -162,7 +162,7 @@ public:
  * hierarchical directory structure, B-tree catalog and extents files,
  * and unlimited file extents via overflow handling.
  */
-class hfs_partition_t : public partition_t
+class hfs_partition_t : public partition_t, public std::enable_shared_from_this<hfs_partition_t>
 {
 	std::shared_ptr<datasource_t> datasource_;
 	uint64_t allocationStart_ = 0;
@@ -183,8 +183,15 @@ class hfs_partition_t : public partition_t
 	block_t read(uint64_t blockOffset) const;
 	
 	/**
+	 * Initialize basic partition metadata (allocation info, extents, catalog setup).
+	 * This is safe to call during construction.
+	 */
+	void initialize_partition();
+
+	/**
 	 * Build the root folder by parsing HFS catalog and extents B-trees.
 	 * Creates the complete file and folder hierarchy.
+	 * Must be called after the object is managed by a shared_ptr.
 	 */
 	void build_root_folder();
 
@@ -205,6 +212,12 @@ public:
 	 * @param datasource Data source containing the HFS volume
 	 */
 	hfs_partition_t(std::shared_ptr<datasource_t> datasource);
+
+	/**
+	 * Complete the initialization by building files and folders.
+	 * Must be called after the object is managed by a shared_ptr.
+	 */
+	void complete_initialization() { build_root_folder(); }
 
 	/**
 	 * Get the underlying data source.
@@ -260,11 +273,14 @@ public:
 	 * @param size Number of bytes to read (may receive less)
 	 * @return Block containing the actual data read (use .size() for actual bytes)
 	 */
-	block_t read_allocation(uint64_t offset, uint16_t size)
-	{
+	block_t read_allocation(uint64_t offset, uint32_t size) {
 #ifdef VERBOSE
 		std::cout << std::format("read_allocation({},{})\n", offset, size);
 #endif
+		
+		if (!datasource_) {
+			throw std::runtime_error("Null datasource");
+		}
 
 		uint64_t disk_offset = static_cast<uint64_t>(allocationStart_) * 512 + offset;
 		

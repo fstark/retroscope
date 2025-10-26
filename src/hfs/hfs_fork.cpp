@@ -2,8 +2,8 @@
 #include "hfs/hfs_partition.h"
 #include <algorithm>
 
-hfs_fork_t::hfs_fork_t(const hfs_file_t* file, uint32_t logical_size)
-    : file_(file), logical_size_(logical_size) {}
+hfs_fork_t::hfs_fork_t(const hfs_file_t* file, uint32_t logical_size, std::shared_ptr<hfs_partition_t> partition)
+    : file_(file), logical_size_(logical_size), partition_(partition) {}
 
 uint32_t hfs_fork_t::size() const
 {

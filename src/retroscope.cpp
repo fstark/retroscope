@@ -10,6 +10,7 @@
 #include "data/bin_datasource.h"
 #include "rsrc/rsrc.h"
 #include "rsrc/rsrc_parser.h"
+#include "utils/md5.h"
 
 #include <cstdint>
 #include <string>
@@ -25,6 +26,7 @@
 #include <tuple>
 #include <unordered_set>
 #include <cassert>
+#include <algorithm>
 
 std::string string_from_sizes(uint32_t min, uint32_t max)
 {
@@ -226,20 +228,25 @@ class file_accumulator_t : public file_visitor_t
 {
     std::vector<std::shared_ptr<File>> found_files_;
     std::unordered_set<std::string> exclude_keys_;
+    bool use_content_comparison_;
 
 public:
-    file_accumulator_t() {}
-    file_accumulator_t(const std::vector<std::shared_ptr<File>> &exclusion)
+    file_accumulator_t(bool use_content_comparison = false) : use_content_comparison_(use_content_comparison) {}
+    file_accumulator_t(const std::vector<std::shared_ptr<File>> &exclusion, bool use_content_comparison = false)
+        : use_content_comparison_(use_content_comparison)
     {
         for (const auto &file : exclusion)
         {
-            exclude_keys_.insert(file->key());
+            exclude_keys_.insert(get_file_key(file));
         }
     }
 
     void visit_file(std::shared_ptr<File> file) override
     {
-        if (!is_excluded(file))
+        auto key = get_file_key(file);
+        bool excluded = is_excluded(file);
+        
+        if (!excluded)
         {
             found_files_.push_back(file);
             file->retain_folder();
@@ -252,16 +259,31 @@ public:
     void switch_exclusion()
     {
         exclude_keys_.clear();
+        std::map<std::string, int> key_counts;
+        
         for (const auto &file : found_files_)
         {
-            exclude_keys_.insert(file->key());
+            auto key = get_file_key(file);
+            exclude_keys_.insert(key);
+            key_counts[key]++;
+            
         }
+        
         clear();
     }
+    
     bool is_excluded(const std::shared_ptr<File> &file) const
     {
-        // rs_log("Checking exclusion for file key: {}", file->key());
-        return exclude_keys_.find(file->key()) != exclude_keys_.end();
+        auto key = get_file_key(file);
+        bool excluded = exclude_keys_.find(key) != exclude_keys_.end();
+        
+        return excluded;
+    }
+    
+private:
+    std::string get_file_key(const std::shared_ptr<File> &file) const
+    {
+        return use_content_comparison_ ? file->content_key() : file->key();
     }
 };
 
@@ -366,6 +388,130 @@ public:
                 std::cerr << "DEBUG: Error reading resource fork for " << file->name() << ": " << e.what() << std::endl;
                 std::cout << std::format("    Error reading resource fork: {}", e.what()) << std::endl;
             }
+        }
+    }
+};
+
+class icon_extractor_t : public file_visitor_t
+{
+private:
+    struct IconInfo {
+        std::string source;
+        std::vector<uint8_t> data;
+    };
+    
+    std::map<std::string, std::vector<IconInfo>> unique_icons_; // MD5 -> list of {source, data}
+    
+    void process_icon_resource(const rsrc_t& resource, std::shared_ptr<File> file, const std::string& type) {
+        // Get the icon data
+        auto icon_data = resource.data();
+        if (!icon_data || icon_data->empty()) {
+            return;
+        }
+        
+        // Convert to string for MD5 calculation
+        std::string data_str(icon_data->begin(), icon_data->end());
+        
+        // Calculate MD5 hash
+        std::string md5_hash = MD5(data_str).toStr();
+        
+        // Create source description
+        std::string source = std::format("{}:{} ({} ID {})", 
+            string_from_disk(file->disk()), 
+            string_from_file(*file),
+            type,
+            resource.id());
+            
+        if (resource.has_name()) {
+            source += std::format(" \"{}\"", resource.name());
+        }
+        
+        // Add to our collection with icon bitmap data
+        unique_icons_[md5_hash].push_back({source, *icon_data});
+    }
+    
+    void dump_icon_bitmap(const std::vector<uint8_t>& icon_data) const {
+        // Mac ICON is 32x32 monochrome bitmap, 128 bytes (32*32/8)
+        if (icon_data.size() != 128) {
+            std::cout << "    [Invalid icon size: " << icon_data.size() << " bytes, expected 128]\n";
+            return;
+        }
+        
+        std::cout << "    32x32 bitmap:\n";
+        for (int row = 0; row < 32; row++) {
+            std::cout << "    ";
+            for (int col = 0; col < 32; col++) {
+                // Calculate byte and bit position
+                int byte_pos = row * 4 + (col / 8);  // 4 bytes per row (32 bits / 8)
+                int bit_pos = 7 - (col % 8);         // MSB first
+                
+                // Check if bit is set
+                bool pixel_set = (icon_data[byte_pos] >> bit_pos) & 1;
+                std::cout << (pixel_set ? '#' : ' ');
+            }
+            std::cout << "\n";
+        }
+    }
+    
+public:
+    void visit_file(std::shared_ptr<File> file) override
+    {
+        // Only process files with resource forks
+        if (file->rsrc_size() == 0) {
+            return;
+        }
+        
+        auto rsrc_data = file->read_rsrc(0, file->rsrc_size());
+        if (rsrc_data.empty()) {
+            return;
+        }
+        
+        try {
+            // Set up a lambda for reading from the resource data
+            auto read_func = [&rsrc_data](uint32_t offset, uint32_t size) -> std::vector<uint8_t> {
+                if (offset >= rsrc_data.size()) {
+                    return {};
+                }
+                
+                uint32_t actual_size = std::min(size, static_cast<uint32_t>(rsrc_data.size() - offset));
+                std::vector<uint8_t> result(rsrc_data.begin() + offset, rsrc_data.begin() + offset + actual_size);
+                return result;
+            };
+            
+            rsrc_parser_t parser(rsrc_data.size(), read_func);
+            if (!parser.is_valid()) {
+                return;
+            }
+            
+            // Extract all ICON resources
+            parser.iterate_resources("ICON", [this, file](const rsrc_t& resource) {
+                process_icon_resource(resource, file, "ICON");
+            });
+            
+        } catch (const std::exception& e) {
+            // Silently ignore parsing errors for now
+        }
+    }
+    
+    void dump_icons() const
+    {
+        std::cout << std::format("Found {} unique ICON resources:\n", unique_icons_.size());
+        
+        for (const auto& [md5_hash, icon_infos] : unique_icons_) {
+            std::cout << std::format("MD5: {} ({} occurrence{})\n", 
+                md5_hash, icon_infos.size(), icon_infos.size() == 1 ? "" : "s");
+            
+            // Show sources
+            for (const auto& info : icon_infos) {
+                std::cout << std::format("  - {}\n", info.source);
+            }
+            
+            // Dump the bitmap (use data from first occurrence)
+            if (!icon_infos.empty()) {
+                dump_icon_bitmap(icon_infos[0].data);
+            }
+            
+            std::cout << std::endl;
         }
     }
 };
@@ -658,13 +804,20 @@ int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        std::cerr << "Usage: " << argv[0] << " {list|diff} <disk_image_file_or_directory> [additional_paths...]\n";
+        std::cerr << "Usage: " << argv[0] << " {list|diff|icon} <disk_image_file_or_directory> [additional_paths...]\n";
         std::cerr << "Analyzes vintage Macintosh HFS disk images and list content.\n";
         std::cerr << "Commands:\n";
         std::cerr << "  list - List files in the disk images\n";
         std::cerr << "  diff - Show files that differ between disk images\n";
+        std::cerr << "  icon - Extract and deduplicate ICON resources using MD5 hashes\n";
         std::cerr << "If a directory is provided, recursively processes all files in it.\n";
         std::cerr << "Multiple paths can be specified to process them all.\n";
+        std::cerr << "Options:\n";
+        std::cerr << "  --type=XXXX    Filter by file type\n";
+        std::cerr << "  --creator=XXXX Filter by file creator\n";
+        std::cerr << "  --name=substr  Filter by filename substring\n";
+        std::cerr << "  --group        Group files by type/creator (list command only)\n";
+        std::cerr << "  --content      Use MD5 content comparison for diff (diff command only)\n";
         return 1;
     }
 
@@ -673,9 +826,9 @@ int main(int argc, char *argv[])
         // Parse command line arguments
         auto [command, flags, paths] = parse_arguments(argc, argv);
 
-        if (command != "list" && command != "diff")
+        if (command != "list" && command != "diff" && command != "icon")
         {
-            std::cerr << "Error: First argument must be 'list' or 'diff'\n";
+            std::cerr << "Error: First argument must be 'list', 'diff', or 'icon'\n";
             return 1;
         }
 
@@ -690,6 +843,7 @@ int main(int argc, char *argv[])
         gCreator = get_arg(flags, "creator", ""s);
         gName = get_arg(flags, "name", ""s);
         gGroup = get_arg(flags, "group", false);
+        gContent = get_arg(flags, "content", false);
 
         //  If gType is in the form of "XXXX/XXXX" split into type and creator
         size_t slash_pos = gType.find('/');
@@ -713,6 +867,15 @@ int main(int argc, char *argv[])
             filters.push_back(std::make_shared<creator_filter_t>(gCreator));
         }
 
+        if (command == "icon")
+        {
+            auto icon_extractor = std::make_shared<icon_extractor_t>();
+            filter_visitor_t visitor{filters, icon_extractor};
+            process_paths(paths, visitor);
+            icon_extractor->dump_icons();
+            return 0;
+        }
+
         if (command == "list" && !gGroup)
         {
             auto printer = std::make_shared<file_printer_t>();
@@ -722,7 +885,7 @@ int main(int argc, char *argv[])
         }
 
         //  We will need to keep the files somewhere
-        auto accumulator = std::make_shared<file_accumulator_t>();
+        auto accumulator = std::make_shared<file_accumulator_t>(gContent);
         filter_visitor_t visitor{filters, accumulator};
 
         if (command == "list")
@@ -747,7 +910,13 @@ int main(int argc, char *argv[])
         if (!gGroup)
         {
             // we print the files [should be done with a printer visitor]
-            for (auto &file : accumulator->get_found_files())
+            // Create a copy of the files and sort them alphabetically
+            auto files = accumulator->get_found_files();
+            std::sort(files.begin(), files.end(), [](const std::shared_ptr<File>& a, const std::shared_ptr<File>& b) {
+                return string_from_file(*a) < string_from_file(*b);
+            });
+            
+            for (auto &file : files)
             {
                 std::cout << string_from_file(*file) << std::endl;
             }

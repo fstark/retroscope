@@ -3,9 +3,11 @@
 #include "fork.h"
 #include <vector>
 #include <cstdint>
+#include <memory>
 
 // Forward declarations
 class hfs_file_t;
+class hfs_partition_t;
 
 /**
  * HFS implementation of fork_t interface.
@@ -16,14 +18,16 @@ class hfs_fork_t : public fork_t {
 private:
     const hfs_file_t* file_;
     uint32_t logical_size_;
+    std::shared_ptr<hfs_partition_t> partition_; // Keep partition alive
 
 public:
     /**
      * Construct HFS fork from hfs_file_t.
      * @param file Pointer to hfs_file_t (must remain valid during fork lifetime)
      * @param logical_size Logical size of the fork in bytes
+     * @param partition Shared pointer to partition to keep it alive
      */
-    hfs_fork_t(const hfs_file_t* file, uint32_t logical_size);
+    hfs_fork_t(const hfs_file_t* file, uint32_t logical_size, std::shared_ptr<hfs_partition_t> partition);
 
     /**
      * Get the size of this fork in bytes.

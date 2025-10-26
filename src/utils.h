@@ -12,6 +12,7 @@ extern std::string gType;
 extern std::string gCreator;
 extern std::string gName;
 extern bool gGroup;
+extern bool gContent;
 
 // Utility function declarations
 std::string string_from_pstring(const uint8_t *pascalStr);
@@ -96,7 +97,7 @@ public:
     rs_log_scope_guard _rs_log_guard(__func__);
 
 #define noVERBOSE
-#ifndef noVERBOSE
+#ifndef VERBOSE
 #undef ENTRY
 #define ENTRY(...)
 #define rs_log(...)

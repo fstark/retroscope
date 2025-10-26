@@ -587,7 +587,9 @@ hfs_partition_t::hfs_partition_t(std::shared_ptr<datasource_t> datasource)
     : datasource_(datasource),
       extents_(*this), catalog_(*this)
 {
-    build_root_folder();
+    // Initialize basic partition info but don't build files yet
+    // (files need shared_from_this which requires the object to be in a shared_ptr)
+    initialize_partition();
 }
 
 block_t hfs_partition_t::read(uint64_t blockOffset) const
@@ -612,7 +614,7 @@ block_t hfs_partition_t::read_allocated_block(uint16_t block, uint16_t size)
 #define CNID_CATALOG 4
 
 //  This is more than "building root", it is "mounting the partition and creating proxy for all the files"
-void hfs_partition_t::build_root_folder()
+void hfs_partition_t::initialize_partition()
 {
     //  First step is to read the Master Directory Block
     //  To extract a few key informations
@@ -623,10 +625,6 @@ void hfs_partition_t::build_root_folder()
     {
         throw std::runtime_error("Not an HFS volume");
     }
-
-    auto disk = std::make_shared<Disk>(from_macroman(mdb.getVolumeName()), datasource_->description());
-
-    // std::cout << std::format("\n\n\n\nHFS Volume: {} (Disk: {})\n", mdb.getVolumeName(), datasource_->description());
 
     allocationBlockSize_ = mdb.allocationBlockSize();
     allocationStart_ = mdb.allocationBlockStart();
@@ -665,6 +663,14 @@ void hfs_partition_t::build_root_folder()
 #endif
         }
     }
+}
+
+void hfs_partition_t::build_root_folder()
+{
+    // Read MDB again to get volume name for Disk object
+    block_t mdb_block = read(2);
+    master_directory_block_t mdb = as_master_directory_block(mdb_block);
+    auto disk = std::make_shared<Disk>(from_macroman(mdb.getVolumeName()), datasource_->description());
 
     //  However, the MDB only gives us the first 3 extents for each file
     //  It is always enough for extends [citation needed]
@@ -813,7 +819,8 @@ void hfs_partition_t::build_root_folder()
                 
                 // Create adapter using the complete extents
                 data_fork = std::make_unique<hfs_fork_t>(&it->second, 
-                                                         file_record->dataLogicalSize());
+                                                         file_record->dataLogicalSize(),
+                                                         shared_from_this());
             }
             
             if (file_record->rsrcLogicalSize() > 0) {
@@ -850,7 +857,8 @@ void hfs_partition_t::build_root_folder()
                 
                 // Create adapter using the complete extents
                 rsrc_fork = std::make_unique<hfs_fork_t>(&it->second, 
-                                                         file_record->rsrcLogicalSize());
+                                                         file_record->rsrcLogicalSize(),
+                                                         shared_from_this());
             }
             
             std::shared_ptr<File> file = std::make_shared<File>(

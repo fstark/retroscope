@@ -236,3 +236,16 @@ std::vector<rsrc_t> rsrc_parser_t::get_resources() const
     
     return resources;
 }
+
+void rsrc_parser_t::iterate_resources(const std::string& type, std::function<void(const rsrc_t&)> visitor) const
+{
+    // Get all resources using the existing implementation
+    auto resources = get_resources();
+    
+    // Iterate through resources and call visitor for matching type
+    for (const auto& resource : resources) {
+        if (resource.type() == type) {
+            visitor(resource);
+        }
+    }
+}

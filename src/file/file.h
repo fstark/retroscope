@@ -45,12 +45,15 @@ public:
 	void retain_folder();
 	// concatenation of name, type, creator, datasize and rscsize
 	std::string key() const { return std::format( "{}|{}|{}|{}|{}", name_, type_, creator_, data_size_, rsrc_size_); }
+	
+	// concatenation of name, type, creator, datasize, rscsize and content MD5 hashes
+	std::string content_key() const;
 
 	// Read methods using fork_t
 	std::vector<uint8_t> read_data(uint32_t offset = 0, uint32_t size = UINT32_MAX);
 	std::vector<uint8_t> read_rsrc(uint32_t offset = 0, uint32_t size = UINT32_MAX);
 	
 	// Convenience methods
-	std::vector<uint8_t> read_data_all() { return read_data(0, data_size_); }
-	std::vector<uint8_t> read_rsrc_all() { return read_rsrc(0, rsrc_size_); }
+	std::vector<uint8_t> read_data_all() const { return const_cast<File*>(this)->read_data(0, data_size_); }
+	std::vector<uint8_t> read_rsrc_all() const { return const_cast<File*>(this)->read_rsrc(0, rsrc_size_); }
 };

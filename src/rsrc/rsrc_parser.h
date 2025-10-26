@@ -105,4 +105,15 @@ public:
      * @throws std::runtime_error if parsing fails or fork is invalid
      */
     std::vector<rsrc_t> get_resources() const;
+
+    /**
+     * Iterate through all resources of a specific type.
+     * Calls the provided function for each resource matching the specified type.
+     * Uses get_resources internally to obtain all resources, then filters by type.
+     * 
+     * @param type 4-character resource type code to filter by (e.g., "CODE", "PICT")
+     * @param visitor Function to call for each matching resource
+     * @throws std::runtime_error if parsing fails or fork is invalid
+     */
+    void iterate_resources(const std::string& type, std::function<void(const rsrc_t&)> visitor) const;
 };

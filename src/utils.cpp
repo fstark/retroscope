@@ -10,6 +10,7 @@ std::string gType = "";
 std::string gCreator = "";
 std::string gName = "";
 bool gGroup = false;
+bool gContent = false;
 
 // Convert Pascal string to C++ string
 std::string string_from_pstring(const uint8_t *pascalStr)
