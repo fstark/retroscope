@@ -506,12 +506,16 @@ uint16_t hfs_file_t::to_absolute_block(uint16_t block) const
 
 uint32_t hfs_file_t::allocation_offset(uint32_t offset) const
 {
-    auto allocation_block_size = partition_.allocation_block_size();
+    auto allocation_block_size = static_cast<uint64_t>(partition_.allocation_block_size());
     for (auto &ext : extents_)
     {
-        if (offset < ext.count * allocation_block_size)
-            return ext.start * allocation_block_size + offset;
-        offset -= ext.count * allocation_block_size;
+        uint64_t extent_size = static_cast<uint64_t>(ext.count) * allocation_block_size;
+        if (offset < extent_size)
+        {
+            uint64_t result = static_cast<uint64_t>(ext.start) * allocation_block_size + offset;
+            return static_cast<uint32_t>(result);
+        }
+        offset -= extent_size;
     }
     throw std::out_of_range("Offset out of range");
 }
@@ -550,14 +554,14 @@ std::vector<uint8_t> hfs_file_t::read(uint32_t offset, uint32_t size) const
         uint32_t bytes_in_this_read = remaining;
         
         // Find which extent this offset falls into and limit read to extent boundary
-        uint32_t file_pos = 0;
+        uint64_t file_pos = 0;
         for (const auto& extent : extents_) {
-            uint32_t extent_size = extent.count * partition_.allocation_block_size();
+            uint64_t extent_size = static_cast<uint64_t>(extent.count) * partition_.allocation_block_size();
             if (current_offset < file_pos + extent_size) {
                 // This offset is in this extent
-                uint32_t offset_in_extent = current_offset - file_pos;
-                uint32_t bytes_left_in_extent = extent_size - offset_in_extent;
-                bytes_in_this_read = std::min(bytes_in_this_read, bytes_left_in_extent);
+                uint64_t offset_in_extent = current_offset - file_pos;
+                uint64_t bytes_left_in_extent = extent_size - offset_in_extent;
+                bytes_in_this_read = std::min(bytes_in_this_read, static_cast<uint32_t>(bytes_left_in_extent));
                 break;
             }
             file_pos += extent_size;
