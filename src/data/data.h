@@ -17,6 +17,7 @@ public:
     block_t(const std::vector<uint8_t> &data) : data_(data) {}
 
     void *data() { return data_.data(); }
+    size_t size() const { return data_.size(); }
     void dump() const { ::dump(data_); }
 };
 

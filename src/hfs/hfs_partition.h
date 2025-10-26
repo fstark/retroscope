@@ -107,13 +107,15 @@ public:
 	 * @param offset Byte offset within the file
 	 * @return Offset within the allocation space
 	 */
-	uint32_t allocation_offset(uint32_t offset) const;
+	uint64_t allocation_offset(uint32_t offset) const;
 
 	/**
 	 * Set the logical size of this file.
 	 * @param size Logical size in bytes
 	 */
-	void set_logical_size(uint32_t size) { logical_size_ = size; }
+	void set_logical_size(uint32_t size) { 
+		logical_size_ = size; 
+	}
 	
 	/**
 	 * Get the logical size of this file.
@@ -245,17 +247,32 @@ public:
 
 	/**
 	 * Read data from the allocation zone.
+	 * 
+	 * Note: This method may return fewer bytes than requested if:
+	 * - The request would exceed partition boundaries
+	 * - The request crosses allocation block boundaries
+	 * - End of file/extent is reached
+	 * 
+	 * Callers must check the actual size of the returned block_t
+	 * using block_t.size() rather than assuming the requested size.
+	 * 
 	 * @param offset Byte offset within allocation zone
-	 * @param size Number of bytes to read
-	 * @return Block containing the requested data
+	 * @param size Number of bytes to read (may receive less)
+	 * @return Block containing the actual data read (use .size() for actual bytes)
 	 */
-	block_t read_allocation(uint32_t offset, uint16_t size)
+	block_t read_allocation(uint64_t offset, uint16_t size)
 	{
 #ifdef VERBOSE
 		std::cout << std::format("read_allocation({},{})\n", offset, size);
 #endif
 
-		auto disk_offset = allocationStart_ * 512 + offset;
+		uint64_t disk_offset = static_cast<uint64_t>(allocationStart_) * 512 + offset;
+		
+		// Check bounds to prevent reading beyond partition
+		if (disk_offset + size > datasource_->size()) {
+			throw std::out_of_range("Read beyond partition bounds");
+		}
+		
 		return datasource_->read_block(disk_offset, size);
 	}
 

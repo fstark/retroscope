@@ -296,6 +296,7 @@ public:
     void visit_file(std::shared_ptr<File> file) override
     {
         std::cout << string_from_file(*file) << std::endl;
+        std::cout.flush(); // Make sure the file name is printed before any error
 
         // Show first 16 bytes of data fork in hex + ASCII
         // auto data = file->read_data_all();
@@ -313,50 +314,57 @@ public:
 
         // Dump resource fork if present
         if (file->rsrc_size() > 0) {
-            auto rsrc_data = file->read_rsrc(0, file->rsrc_size());
-            if (!rsrc_data.empty()) {
-                try {
-                    // Create a read function lambda for the resource parser
-                    auto read_func = [&rsrc_data](uint32_t offset, uint32_t size) -> std::vector<uint8_t> {
-                        if (offset >= rsrc_data.size()) {
-                            return {};
-                        }
-                        uint32_t available = rsrc_data.size() - offset;
-                        uint32_t to_read = std::min(size, available);
-                        return std::vector<uint8_t>(rsrc_data.begin() + offset, 
-                                                   rsrc_data.begin() + offset + to_read);
-                    };
-
-                    // Parse and dump the resource fork
-                    rsrc_parser_t parser(rsrc_data.size(), read_func);
-                    if (parser.is_valid()) {
-                        parser.dump();
-                        
-                        // Test the new get_resources API
-                        try {
-                            auto resources = parser.get_resources();
-                            
-                            // Show a few examples of the new API
-                            int shown = 0;
-                            for (const auto& resource : resources) {
-                                std::cout << std::format("    {} {} ({} bytes)", 
-                                                        resource.type(), resource.id(), resource.size());
-                                if (resource.has_name()) {
-                                    std::cout << std::format(" \"{}\"", resource.name());
-                                }
-                                std::cout << std::endl;
-                                shown++;
+            try {
+                auto rsrc_data = file->read_rsrc(0, file->rsrc_size());
+                if (!rsrc_data.empty()) {
+                    try {
+                        // Create a read function lambda for the resource parser
+                        auto read_func = [&rsrc_data](uint32_t offset, uint32_t size) -> std::vector<uint8_t> {
+                            if (offset >= rsrc_data.size()) {
+                                return {};
                             }
-                        } catch (const std::exception& e) {
-                            std::cout << std::format("    Error reading resources: {}", e.what()) << std::endl;
+                            uint32_t available = rsrc_data.size() - offset;
+                            uint32_t to_read = std::min(size, available);
+                            return std::vector<uint8_t>(rsrc_data.begin() + offset, 
+                                                       rsrc_data.begin() + offset + to_read);
+                        };
+
+                        // Parse and dump the resource fork
+                        rsrc_parser_t parser(rsrc_data.size(), read_func);
+                        if (parser.is_valid()) {
+                            parser.dump();
+                            
+                            // Test the new get_resources API
+                            try {
+                                auto resources = parser.get_resources();
+                                
+                                // Show a few examples of the new API
+                                int shown = 0;
+                                for (const auto& resource : resources) {
+                                    std::cout << std::format("    {} {} ({} bytes)", 
+                                                            resource.type(), resource.id(), resource.size());
+                                    if (resource.has_name()) {
+                                        std::cout << std::format(" \"{}\"", resource.name());
+                                    }
+                                    std::cout << std::endl;
+                                    shown++;
+                                }
+                            } catch (const std::exception& e) {
+                                std::cout << std::format("    Error reading resources: {}", e.what()) << std::endl;
+                            }
+                        } else {
+                            std::cout << "    Invalid resource fork" << std::endl;
+                            // Show first 32 bytes of resource fork in hex for debugging
                         }
-                    } else {
-                        std::cout << "    Invalid resource fork" << std::endl;
-                        // Show first 32 bytes of resource fork in hex for debugging
+                    } catch (const std::exception& e) {
+                        std::cout << "    Error parsing resource fork: " << e.what() << std::endl;
                     }
-                } catch (const std::exception& e) {
-                    std::cout << "    Error parsing resource fork: " << e.what() << std::endl;
+                } else {
+                    std::cout << "    Empty resource fork" << std::endl;
                 }
+            } catch (const std::exception& e) {
+                std::cerr << "DEBUG: Error reading resource fork for " << file->name() << ": " << e.what() << std::endl;
+                std::cout << std::format("    Error reading resource fork: {}", e.what()) << std::endl;
             }
         }
     }

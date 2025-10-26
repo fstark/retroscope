@@ -279,7 +279,7 @@ public:
 		while (block_index)
 		{
 			uint32_t file_offset = block_index * node_size_;
-			uint32_t allocation_offset = file_.allocation_offset(file_offset);
+			uint64_t allocation_offset = file_.allocation_offset(file_offset);
 #ifdef VERBOSE
 			std::cout << std::format("**** {} IS THE BTREE BLOC #\n", block_index);
 			std::cout << std::format("**** {} IS THE LOCAL OFFSET\n", file_offset);
@@ -504,19 +504,21 @@ uint16_t hfs_file_t::to_absolute_block(uint16_t block) const
     throw std::out_of_range("Block out of range");
 }
 
-uint32_t hfs_file_t::allocation_offset(uint32_t offset) const
+uint64_t hfs_file_t::allocation_offset(uint32_t offset) const
 {
     auto allocation_block_size = static_cast<uint64_t>(partition_.allocation_block_size());
+    
     for (auto &ext : extents_)
     {
         uint64_t extent_size = static_cast<uint64_t>(ext.count) * allocation_block_size;
         if (offset < extent_size)
         {
             uint64_t result = static_cast<uint64_t>(ext.start) * allocation_block_size + offset;
-            return static_cast<uint32_t>(result);
+            return result;
         }
         offset -= extent_size;
     }
+    
     throw std::out_of_range("Offset out of range");
 }
 
@@ -532,50 +534,49 @@ std::vector<uint8_t> hfs_file_t::read() const
 
 std::vector<uint8_t> hfs_file_t::read(uint32_t offset, uint32_t size) const
 {
-    if (offset >= logical_size_) {
-        return {}; // Beyond file end
-    }
-    
-    // Clamp size to not read beyond logical file size
-    size = std::min(size, logical_size_ - offset);
+    // Note: We don't check against logical_size_ here because:
+    // 1. This method is often called via hfs_fork_t which has already done bounds checking
+    // 2. The hfs_file_t logical_size_ may not be set for resource forks during construction
+    // 3. The caller (hfs_fork_t) knows the correct logical size and has validated the request
     
     std::vector<uint8_t> result;
     result.reserve(size);
     
     uint32_t bytes_read = 0;
+    auto allocation_block_size = partition_.allocation_block_size();
     
-    // Use the existing allocation_offset method which handles the extent traversal
+    // Read data block by block to avoid crossing extent boundaries
     while (bytes_read < size) {
         uint32_t current_offset = offset + bytes_read;
         uint32_t remaining = size - bytes_read;
         
-        // Calculate how much we can read in one go
-        // We need to be careful not to cross extent boundaries
-        uint32_t bytes_in_this_read = remaining;
+        // Calculate offset within current allocation block
+        uint32_t block_offset = current_offset % allocation_block_size;
+        uint32_t bytes_left_in_block = allocation_block_size - block_offset;
+        uint32_t bytes_to_read = std::min(remaining, bytes_left_in_block);
         
-        // Find which extent this offset falls into and limit read to extent boundary
-        uint64_t file_pos = 0;
-        for (const auto& extent : extents_) {
-            uint64_t extent_size = static_cast<uint64_t>(extent.count) * partition_.allocation_block_size();
-            if (current_offset < file_pos + extent_size) {
-                // This offset is in this extent
-                uint64_t offset_in_extent = current_offset - file_pos;
-                uint64_t bytes_left_in_extent = extent_size - offset_in_extent;
-                bytes_in_this_read = std::min(bytes_in_this_read, static_cast<uint32_t>(bytes_left_in_extent));
-                break;
-            }
-            file_pos += extent_size;
+        // Get the absolute disk offset for this file offset
+        uint64_t alloc_offset = allocation_offset(current_offset);
+        
+        // Read from the allocation
+        block_t block_data = partition_.read_allocation(alloc_offset, bytes_to_read);
+        
+        // Verify we got the expected amount of data
+        if (block_data.size() < bytes_to_read) {
+            // This shouldn't happen unless we hit end of partition
+            bytes_to_read = block_data.size();
         }
-        
-        // Use allocation_offset to get the absolute offset and read
-        uint32_t alloc_offset = allocation_offset(current_offset);
-        block_t block_data = partition_.read_allocation(alloc_offset, bytes_in_this_read);
         
         // Copy the data from the block
         const uint8_t* block_ptr = static_cast<const uint8_t*>(block_data.data());
-        result.insert(result.end(), block_ptr, block_ptr + bytes_in_this_read);
+        result.insert(result.end(), block_ptr, block_ptr + bytes_to_read);
         
-        bytes_read += bytes_in_this_read;
+        bytes_read += bytes_to_read;
+        
+        // Safety check to avoid infinite loops
+        if (bytes_to_read == 0) {
+            break;
+        }
     }
     
     return result;
@@ -799,6 +800,15 @@ void hfs_partition_t::build_root_folder()
                 } else {
                     // Set logical size if not already set
                     it->second.set_logical_size(file_record->dataLogicalSize());
+                    
+                    // Add catalog extents (these are the primary extents, extents overflow has additional ones)
+                    for (int i = 0; i < 3; i++) {
+                        uint16_t start = be16(file_record->dataExtents()[i].startBlock);
+                        uint16_t count = be16(file_record->dataExtents()[i].blockCount);
+                        if (count > 0) {
+                            it->second.add_extent({start, count});
+                        }
+                    }
                 }
                 
                 // Create adapter using the complete extents
@@ -827,6 +837,15 @@ void hfs_partition_t::build_root_folder()
                 } else {
                     // Set logical size if not already set
                     it->second.set_logical_size(file_record->rsrcLogicalSize());
+                    
+                    // Add catalog extents (these are the primary extents, extents overflow has additional ones)
+                    for (int i = 0; i < 3; i++) {
+                        uint16_t start = be16(file_record->rsrcExtents()[i].startBlock);
+                        uint16_t count = be16(file_record->rsrcExtents()[i].blockCount);
+                        if (count > 0) {
+                            it->second.add_extent({start, count});
+                        }
+                    }
                 }
                 
                 // Create adapter using the complete extents
