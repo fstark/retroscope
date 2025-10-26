@@ -1,4 +1,4 @@
-#include "hfs_parser.h"
+#include "hfs_partition.h"
 #include <map>
 #include <algorithm>
 
@@ -13,8 +13,7 @@ master_directory_block_t as_master_directory_block(block_t &block)
     return master_directory_block_t(block);
 }
 
-// Function to check if a data source contains an HFS partition
-bool is_hfs(std::shared_ptr<data_source_t> source)
+bool hfs_partition_t::is_hfs(std::shared_ptr<data_source_t> source)
 {
     ENTRY("{}", source->description());
 
@@ -377,13 +376,25 @@ void hfs_partition_t::build_root_folder()
 
         if (file_record) {
             // This is a file
-            std::shared_ptr<File> file = std::make_shared<HFSFile>(
+            
+            // Create file forks
+            std::unique_ptr<file_fork_t> data_fork;
+            std::unique_ptr<file_fork_t> rsrc_fork;
+            
+            if (file_record->dataLogicalSize() > 0) {
+                data_fork = std::make_unique<hfs_file_fork_t>(*this, file_record->dataExtents(), file_record->dataLogicalSize());
+            }
+            if (file_record->rsrcLogicalSize() > 0) {
+                rsrc_fork = std::make_unique<hfs_file_fork_t>(*this, file_record->rsrcExtents(), file_record->rsrcLogicalSize());
+            }
+            
+            std::shared_ptr<File> file = std::make_shared<File>(
                 disk,
                 from_macroman(catalog_record->name()),
                 file_record->type(),
                 file_record->creator(),
-                file_record->dataLogicalSize(),
-                file_record->rsrcLogicalSize());
+                std::move(data_fork),
+                std::move(rsrc_fork));
 
                 // Find parent folder and add file to it
             auto parent_it = folders.find(parent_id);

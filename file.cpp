@@ -11,9 +11,15 @@ static int sFileCount = 0;
 #endif
 
 File::File(const std::shared_ptr<Disk> &disk, const std::string &name, const std::string &type,
-           const std::string &creator, uint32_t data_size, uint32_t rsrc_size)
+           const std::string &creator, 
+           std::unique_ptr<file_fork_t> data_fork,
+           std::unique_ptr<file_fork_t> rsrc_fork)
     : disk_(disk), name_(name), sane_name_(sanitize_string(name)), type_(type), creator_(creator),
-      data_size_(data_size), rsrc_size_(rsrc_size), parent_(nullptr)
+      data_size_(data_fork ? data_fork->size() : 0), 
+      rsrc_size_(rsrc_fork ? rsrc_fork->size() : 0), 
+      parent_(nullptr),
+      data_fork_(std::move(data_fork)), 
+      rsrc_fork_(std::move(rsrc_fork))
 {
 #ifdef DEBUG_MEMORY
     sFileCount++;
@@ -51,6 +57,28 @@ std::vector<std::shared_ptr<Folder>> File::retained_path() const
         }
     }
     return result;
+}
+
+std::vector<uint8_t> File::read_data(uint32_t offset, uint32_t size)
+{
+    if (!data_fork_) {
+        return {};
+    }
+    if (size == UINT32_MAX) {
+        size = data_fork_->size() - offset;
+    }
+    return data_fork_->read(offset, size);
+}
+
+std::vector<uint8_t> File::read_rsrc(uint32_t offset, uint32_t size)
+{
+    if (!rsrc_fork_) {
+        return {};
+    }
+    if (size == UINT32_MAX) {
+        size = rsrc_fork_->size() - offset;
+    }
+    return rsrc_fork_->read(offset, size);
 }
 
 #ifdef DEBUG_MEMORY

@@ -1,7 +1,6 @@
 #include "retroscope.h"
 #include "data.h"
-#include "hfs_parser.h"
-#include "mfs_parser.h"
+#include "partition.h"
 #include "file_set.h"
 #include "apm_datasource.h"
 #include "dc42_datasource.h"
@@ -21,6 +20,7 @@
 #include <map>
 #include <tuple>
 #include <unordered_set>
+#include <cassert>
 
 std::string string_from_sizes(uint32_t min, uint32_t max)
 {
@@ -521,35 +521,23 @@ void process_disk_image(const std::filesystem::path &filepath, file_visitor_t &v
 
     for (auto &source : sources)
     {
-        if (is_hfs(source))
+        auto partition = partition_t::create(source);
+        if (partition)
         {
-            rs_log("Found HFS partition");
             try
             {
-                hfs_partition_t partition(source);
-                auto root = partition.get_root_folder();
+                auto root = partition->get_root_folder();
                 visit_folder(root, visitor);
-                root->release();
             }
-            catch (const std::exception &hfs_error)
+            catch (const std::exception &error)
             {
-                std::cerr << "\033[31mError parsing HFS partition\033[0m : " << filepath << " (" << file_source->size() << " bytes) ";
-                std::cerr << ": " << hfs_error.what() << "\n";
+                std::cerr << "\033[31mError parsing partition\033[0m : " << filepath << " (" << file_source->size() << " bytes) ";
+                std::cerr << ": " << error.what() << "\n";
             }
         }
-        else if (is_mfs(source))
+        else
         {
-            rs_log("Found MFS partition");
-            try
-            {
-                mfs_partition_t partition(source);
-                partition.scan_partition(visitor);
-            }
-            catch (const std::exception &mfs_error)
-            {
-                std::cerr << "In disk image: " << filepath << " (" << file_source->size() << " bytes)\n";
-                std::cerr << "Error parsing MFS partition: " << mfs_error.what() << "\n";
-            }
+            rs_log("Unknown partition type for {}", source->description());
         }
     }
 }

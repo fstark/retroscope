@@ -1,7 +1,12 @@
-#include "mfs_parser.h"
+#include "mfs_partition.h"
 
-// Function to check if a data source contains an MFS partition
-bool is_mfs(std::shared_ptr<data_source_t> source)
+// mfs_partition_t implementation
+mfs_partition_t::mfs_partition_t(std::shared_ptr<data_source_t> source)
+    : source_(source), root_folder_(nullptr)
+{
+}
+
+bool mfs_partition_t::is_mfs(std::shared_ptr<data_source_t> source)
 {
     // Need at least 1024 + some bytes to check for MFS MDB at offset 1024
     if (source->size() < 1536)
@@ -15,12 +20,6 @@ bool is_mfs(std::shared_ptr<data_source_t> source)
 
     // Check MFS signature (0xD2D7 in big endian)
     return be16(mdb->drSigWord) == 0xD2D7;
-}
-
-// mfs_partition_t implementation
-mfs_partition_t::mfs_partition_t(std::shared_ptr<data_source_t> source)
-    : source_(source)
-{
 }
 
 std::vector<uint8_t> mfs_partition_t::read_file_fork(const MFSDirectoryEntry *entry, bool is_resource_fork) const
@@ -66,16 +65,20 @@ std::pair<std::vector<uint8_t>, std::vector<uint8_t>> mfs_partition_t::read_file
     return {std::move(data_fork), std::move(rsrc_fork)};
 }
 
-void mfs_partition_t::scan_partition(file_visitor_t &visitor)
+void mfs_partition_t::build_root_folder()
 {
     ENTRY("");
+
+    // Return early if already built
+    if (root_folder_) {
+        return;
+    }
 
     // Read the Master Directory Block at offset 1024
     block_t mdb_block = source_->read_block(1024, 512);
     const MFSMasterDirectoryBlock *mdb = static_cast<const MFSMasterDirectoryBlock *>(mdb_block.data());
 
     // Extract directory information
-    // uint16_t num_files = be16(mdb->drNmFls);
     uint16_t dir_start = be16(mdb->drDirSt);
     uint16_t dir_length = be16(mdb->drBlLen);
 
@@ -85,7 +88,7 @@ void mfs_partition_t::scan_partition(file_visitor_t &visitor)
 
     // Create disk and root folder
     auto disk = std::make_shared<Disk>(volume_name, source_->description());
-    auto root_folder = std::make_shared<Folder>(volume_name);
+    root_folder_ = std::make_shared<Folder>(volume_name);
 
     // Calculate directory offset (dir_start is in 512-byte blocks)
     uint32_t dir_offset = dir_start * 512;
@@ -153,12 +156,23 @@ void mfs_partition_t::scan_partition(file_visitor_t &visitor)
                 // Read the actual file content
                 auto [data_content, rsrc_content] = read_file_content(entry);
 
-                // Create MFSFile object with actual data
-                auto file = std::make_shared<MFSFile>(disk, filename, type, creator, data_size, rsrc_size,
-                                                      std::move(data_content), std::move(rsrc_content));
+                // Create file forks
+                std::unique_ptr<file_fork_t> data_fork;
+                std::unique_ptr<file_fork_t> rsrc_fork;
+                
+                if (data_size > 0 && !data_content.empty()) {
+                    data_fork = std::make_unique<mfs_file_fork_t>(std::move(data_content));
+                }
+                if (rsrc_size > 0 && !rsrc_content.empty()) {
+                    rsrc_fork = std::make_unique<mfs_file_fork_t>(std::move(rsrc_content));
+                }
+
+                // Create File object
+                auto file = std::make_shared<File>(disk, filename, type, creator,
+                                                          std::move(data_fork), std::move(rsrc_fork));
 
                 // Add file to root folder
-                root_folder->add_file(file);
+                root_folder_->add_file(file);
                 entries_found++;
             }
             
@@ -168,7 +182,12 @@ void mfs_partition_t::scan_partition(file_visitor_t &visitor)
     }
 
     rs_log("Found {} files in use", entries_found);
+}
 
-    // Visit the root folder, which will visit all files
-    visit_folder(root_folder, visitor);
+std::shared_ptr<Folder> mfs_partition_t::get_root_folder()
+{
+    if (!root_folder_) {
+        build_root_folder();
+    }
+    return root_folder_;
 }

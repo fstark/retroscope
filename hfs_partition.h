@@ -20,6 +20,8 @@
 #include "utils.h"
 #include "file.h"
 #include "data.h"
+#include "partition.h"
+#include "hfs_file_fork.h"
 
 #define noVERBOSE
 
@@ -288,6 +290,10 @@ public:
 	int32_t dataPhysicalSize() const { return be32(file_->dataPhysicalSize); }
 	int32_t rsrcLogicalSize() const { return be32(file_->rsrcLogicalSize); }
 	int32_t rsrcPhysicalSize() const { return be32(file_->rsrcPhysicalSize); }
+	
+	// Access to extent records
+	const HFSExtentRecord* dataExtents() const { return file_->dataExtents; }
+	const HFSExtentRecord* rsrcExtents() const { return file_->rsrcExtents; }
 };
 
 class hfs_file_t
@@ -324,7 +330,7 @@ public:
 	bool has_extents() const { return !extents_.empty(); }
 };
 
-class hfs_partition_t
+class hfs_partition_t : public partition_t
 {
 	std::shared_ptr<data_source_t> data_source_;
 	uint64_t allocationStart_ = 0;
@@ -344,7 +350,11 @@ public:
 
 	const data_source_t &data_source() const { return *data_source_; }
 
-	std::shared_ptr<Folder> get_root_folder() { return root_folder; }
+	// Abstract interface implementation
+	std::shared_ptr<Folder> get_root_folder() override { return root_folder; }
+	
+	// Static method to check if data source is HFS
+	static bool is_hfs(std::shared_ptr<data_source_t> source);
 
 	uint64_t allocation_start() { return allocationStart_; }
 	uint32_t allocation_block_size() { return allocationBlockSize_; }
@@ -476,27 +486,3 @@ public:
 	}
 };
 
-// HFS-specific File implementation
-class HFSFile : public File
-{
-	// TODO: Add HFS-specific data members (file_t instances, etc.)
-
-public:
-	HFSFile(const std::shared_ptr<Disk> &disk,
-			const std::string &name, const std::string &type,
-			const std::string &creator, uint32_t data_size, uint32_t rsrc_size)
-		: File(disk, name, type, creator, data_size, rsrc_size) {}
-
-	// Virtual read methods - implementation to be added later
-	std::vector<uint8_t> read_data([[maybe_unused]] uint32_t offset = 0, [[maybe_unused]] uint32_t size = UINT32_MAX) override
-	{
-		// TODO: Implement using HFS file_t
-		return {};
-	}
-
-	std::vector<uint8_t> read_rsrc([[maybe_unused]] uint32_t offset = 0, [[maybe_unused]] uint32_t size = UINT32_MAX) override
-	{
-		// TODO: Implement using HFS file_t
-		return {};
-	}
-};
