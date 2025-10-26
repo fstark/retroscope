@@ -303,14 +303,36 @@ void hfs_partition_t::build_root_folder()
     //  so we scan all the extends records to find additional extends for the catalog file (CNID 4, DATA fork)
     // Get additional extents from the extents B-tree
     btree_file_t extents_btree = extents_.as_btree_file();
+    
+    // First, build complete extent information for ALL files
     extents_btree.iterate_extents([&](const extents_record_t &extent_record)
                                   {
         uint8_t forkType = extent_record.fork_type();
         uint32_t file_ID = extent_record.file_ID();
+        
+        // Create key for this file/fork combination
+        auto key = std::make_pair(file_ID, forkType);
+        
+        // Create or get existing hfs_file_t for this file/fork
+        auto it = files_.find(key);
+        if (it == files_.end()) {
+            // Create new hfs_file_t in the map
+            it = files_.emplace(key, hfs_file_t(*this)).first;
+        }
 
-        // We add the file_ID 4 data extends to the catalog file
-        if (file_ID == CNID_CATALOG && forkType == 0x00)
-        {
+        // Add all extents from this record to the hfs_file_t
+        for (int i = 0; i < 3; i++) {
+            auto extent = extent_record.get_extent(i);
+            if (extent.count > 0) {
+                it->second.add_extent(extent);
+#ifdef VERBOSE
+                std::cout << std::format("Added extent for file {} fork {}: start={}, count={}\n", 
+                                        file_ID, forkType, extent.start, extent.count);
+#endif
+            }
+        }
+        // Special handling: also add catalog extents to catalog_ for backward compatibility
+        if (file_ID == CNID_CATALOG && forkType == 0x00) {
             for (int i = 0; i < 3; i++) {
                 auto extent = extent_record.get_extent(i);
                 if (extent.count > 0) {
@@ -326,6 +348,12 @@ void hfs_partition_t::build_root_folder()
     root_folder = std::make_shared<Folder>(from_macroman(mdb.getVolumeName()));
     folders[CNID_ROOT] = root_folder;
 
+    // Local struct for tracking folder hierarchy relationships
+    struct hierarchy_t {
+        uint32_t parent_id;
+        uint32_t child_id;
+    };
+    
     std::vector<hierarchy_t> hierarchy;
 
     // As files needs folders to be retained, we first create all folders
@@ -376,16 +404,66 @@ void hfs_partition_t::build_root_folder()
 
         if (file_record) {
             // This is a file
+            uint32_t fileID = file_record->file_id();
             
-            // Create file forks
-            std::unique_ptr<file_fork_t> data_fork;
-            std::unique_ptr<file_fork_t> rsrc_fork;
+            // Build complete file extents (catalog + overflow) for each fork
+            std::unique_ptr<fork_t> data_fork;
+            std::unique_ptr<fork_t> rsrc_fork;
             
             if (file_record->dataLogicalSize() > 0) {
-                data_fork = std::make_unique<hfs_file_fork_t>(*this, file_record->dataExtents(), file_record->dataLogicalSize());
+                // Create key for data fork
+                auto data_key = std::make_pair(fileID, static_cast<uint8_t>(0x00));
+                
+                // Get or create hfs_file_t for data fork
+                auto it = files_.find(data_key);
+                if (it == files_.end()) {
+                    // Create new hfs_file_t with logical size
+                    it = files_.emplace(data_key, hfs_file_t(*this, file_record->dataLogicalSize())).first;
+                    
+                    // Add catalog extents
+                    for (int i = 0; i < 3; i++) {
+                        uint16_t start = be16(file_record->dataExtents()[i].startBlock);
+                        uint16_t count = be16(file_record->dataExtents()[i].blockCount);
+                        if (count > 0) {
+                            it->second.add_extent({start, count});
+                        }
+                    }
+                } else {
+                    // Set logical size if not already set
+                    it->second.set_logical_size(file_record->dataLogicalSize());
+                }
+                
+                // Create adapter using the complete extents
+                data_fork = std::make_unique<hfs_fork_t>(&it->second, 
+                                                         file_record->dataLogicalSize());
             }
+            
             if (file_record->rsrcLogicalSize() > 0) {
-                rsrc_fork = std::make_unique<hfs_file_fork_t>(*this, file_record->rsrcExtents(), file_record->rsrcLogicalSize());
+                // Create key for resource fork
+                auto rsrc_key = std::make_pair(fileID, static_cast<uint8_t>(0xFF));
+                
+                // Get or create hfs_file_t for resource fork
+                auto it = files_.find(rsrc_key);
+                if (it == files_.end()) {
+                    // Create new hfs_file_t with logical size
+                    it = files_.emplace(rsrc_key, hfs_file_t(*this, file_record->rsrcLogicalSize())).first;
+                    
+                    // Add catalog extents
+                    for (int i = 0; i < 3; i++) {
+                        uint16_t start = be16(file_record->rsrcExtents()[i].startBlock);
+                        uint16_t count = be16(file_record->rsrcExtents()[i].blockCount);
+                        if (count > 0) {
+                            it->second.add_extent({start, count});
+                        }
+                    }
+                } else {
+                    // Set logical size if not already set
+                    it->second.set_logical_size(file_record->rsrcLogicalSize());
+                }
+                
+                // Create adapter using the complete extents
+                rsrc_fork = std::make_unique<hfs_fork_t>(&it->second, 
+                                                         file_record->rsrcLogicalSize());
             }
             
             std::shared_ptr<File> file = std::make_shared<File>(
@@ -437,6 +515,14 @@ void hfs_partition_t::build_root_folder()
 void hfs_partition_t::readCatalogHeader(uint64_t /* catalogExtendStartBlock */)
 {
     // Implementation moved to build_root_folder()
+}
+
+// Helper method implementation
+const hfs_file_t* hfs_partition_t::get_file(uint32_t fileID, uint8_t forkType) const
+{
+    auto key = std::make_pair(fileID, forkType);
+    auto it = files_.find(key);
+    return (it != files_.end()) ? &it->second : nullptr;
 }
 
 void hfs_partition_t::readCatalogRoot(uint16_t /* rootNode */)

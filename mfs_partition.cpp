@@ -156,15 +156,15 @@ void mfs_partition_t::build_root_folder()
                 // Read the actual file content
                 auto [data_content, rsrc_content] = read_file_content(entry);
 
-                // Create file forks
-                std::unique_ptr<file_fork_t> data_fork;
-                std::unique_ptr<file_fork_t> rsrc_fork;
+                // Create File with forks
+                std::unique_ptr<fork_t> data_fork;
+                std::unique_ptr<fork_t> rsrc_fork;
                 
-                if (data_size > 0 && !data_content.empty()) {
-                    data_fork = std::make_unique<mfs_file_fork_t>(std::move(data_content));
+                if (!data_content.empty()) {
+                    data_fork = std::make_unique<mfs_fork_t>(std::move(data_content));
                 }
-                if (rsrc_size > 0 && !rsrc_content.empty()) {
-                    rsrc_fork = std::make_unique<mfs_file_fork_t>(std::move(rsrc_content));
+                if (!rsrc_content.empty()) {
+                    rsrc_fork = std::make_unique<mfs_fork_t>(std::move(rsrc_content));
                 }
 
                 // Create File object

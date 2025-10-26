@@ -21,7 +21,7 @@
 #include "file.h"
 #include "data.h"
 #include "partition.h"
-#include "hfs_file_fork.h"
+#include "hfs_fork.h"
 
 #define noVERBOSE
 
@@ -33,18 +33,6 @@ class btree_file_t;
 
 // Function to check if a data source contains an HFS partition
 bool is_hfs(std::shared_ptr<data_source_t> source);
-
-struct hierarchy_t
-{
-	uint32_t parent_id;
-	uint32_t child_id;
-};
-
-struct extent_t
-{
-	uint16_t start;
-	uint16_t count;
-};
 
 // Free-standing functions to convert block_t to specific node types
 btree_header_node_t as_btree_header_node(block_t &block);
@@ -195,6 +183,14 @@ public:
 
 class extents_record_t
 {
+public:
+	struct extent_t
+	{
+		uint16_t start;
+		uint16_t count;
+	};
+
+private:
 	const HFSExtentsRecord *data_;
 
 public:
@@ -231,6 +227,9 @@ public:
 			be16(data_->extents[index].blockCount)};
 	}
 };
+
+// Convenience alias for extent_t
+using extent_t = extents_record_t::extent_t;
 
 class catalog_record_t
 {
@@ -338,12 +337,19 @@ class hfs_partition_t : public partition_t
 
 	hfs_file_t extents_;
 	hfs_file_t catalog_;
+	
+	// Map to store complete files: (fileID, forkType) -> hfs_file_t
+	// forkType: 0 = data fork, 0xFF = resource fork
+	std::map<std::pair<uint32_t, uint8_t>, hfs_file_t> files_;
 
 	block_t read(uint64_t blockOffset) const;
 	void build_root_folder();
 
 	std::shared_ptr<Folder> root_folder;
 	std::map<uint32_t, std::shared_ptr<Folder>> folders;
+
+	// Helper method to get complete file
+	const hfs_file_t* get_file(uint32_t fileID, uint8_t forkType) const;
 
 public:
 	hfs_partition_t(std::shared_ptr<data_source_t> data_source);

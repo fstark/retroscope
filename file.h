@@ -5,12 +5,12 @@
 #include <cstdint>
 #include <memory>
 #include <format>
-#include "file_fork.h"
+#include "fork.h"
 
 // Forward declaration
 class Disk;
 class Folder;
-class file_fork_t;
+class fork_t;
 
 class File
 {
@@ -23,15 +23,15 @@ class File
 	uint32_t rsrc_size_;
 	Folder *parent_;
 	std::shared_ptr<Folder> retained_folder_;
-	std::unique_ptr<file_fork_t> data_fork_;
-	std::unique_ptr<file_fork_t> rsrc_fork_;
+	std::unique_ptr<fork_t> data_fork_;
+	std::unique_ptr<fork_t> rsrc_fork_;
 
 public:
 	File(const std::shared_ptr<Disk> &disk,
 		 const std::string &name, const std::string &type,
 		 const std::string &creator, 
-		 std::unique_ptr<file_fork_t> data_fork,
-		 std::unique_ptr<file_fork_t> rsrc_fork);
+		 std::unique_ptr<fork_t> data_fork,
+		 std::unique_ptr<fork_t> rsrc_fork);
 	~File();
 	const std::shared_ptr<Disk> &disk() const { return disk_; }
 	const std::string &name() const { return sane_name_; }
@@ -46,7 +46,7 @@ public:
 	// concatenation of name, type, creator, datasize and rscsize
 	std::string key() const { return std::format( "{}|{}|{}|{}|{}", name_, type_, creator_, data_size_, rsrc_size_); }
 
-	// Read methods using file_fork_t
+	// Read methods using fork_t
 	std::vector<uint8_t> read_data(uint32_t offset = 0, uint32_t size = UINT32_MAX);
 	std::vector<uint8_t> read_rsrc(uint32_t offset = 0, uint32_t size = UINT32_MAX);
 	

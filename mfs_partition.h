@@ -21,7 +21,7 @@
 #include "file.h"
 #include "data.h"
 #include "partition.h"
-#include "mfs_file_fork.h"
+#include "mfs_fork.h"
 
 // Forward declarations
 class mfs_partition_t;

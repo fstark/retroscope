@@ -1,16 +1,16 @@
 #pragma once
 
-#include "file_fork.h"
+#include "fork.h"
 #include <vector>
 #include <cstdint>
 #include <algorithm>
 
 /**
- * MFS implementation of file_fork_t that stores fork content in memory.
+ * MFS implementation of fork_t that stores fork content in memory.
  * This implementation uses eager loading - the entire fork content is
  * read and stored when the object is created.
  */
-class mfs_file_fork_t : public file_fork_t
+class mfs_fork_t : public fork_t
 {
     std::vector<uint8_t> content_;
 
@@ -19,7 +19,7 @@ public:
      * Create an MFS file fork with the given content.
      * @param content The complete fork content (moved into this object)
      */
-    explicit mfs_file_fork_t(std::vector<uint8_t> content)
+    explicit mfs_fork_t(std::vector<uint8_t> content)
         : content_(std::move(content)) {}
 
     /**

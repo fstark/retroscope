@@ -12,8 +12,8 @@ static int sFileCount = 0;
 
 File::File(const std::shared_ptr<Disk> &disk, const std::string &name, const std::string &type,
            const std::string &creator, 
-           std::unique_ptr<file_fork_t> data_fork,
-           std::unique_ptr<file_fork_t> rsrc_fork)
+           std::unique_ptr<fork_t> data_fork,
+           std::unique_ptr<fork_t> rsrc_fork)
     : disk_(disk), name_(name), sane_name_(sanitize_string(name)), type_(type), creator_(creator),
       data_size_(data_fork ? data_fork->size() : 0), 
       rsrc_size_(rsrc_fork ? rsrc_fork->size() : 0), 

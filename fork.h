@@ -4,14 +4,12 @@
 #include <cstdint>
 
 /**
- * Abstract interface for accessing the content of a file fork (data or resource).
- * Each fork is responsible for knowing its own size and providing read access
- * to its content with proper bounds checking.
+ * Abstract interface for file fork access (data and resource forks).
+ * Provides unified access to fork content across different filesystems.
  */
-class file_fork_t
-{
+class fork_t {
 public:
-    virtual ~file_fork_t() = default;
+    virtual ~fork_t() = default;
 
     /**
      * Get the logical size of this fork in bytes.
