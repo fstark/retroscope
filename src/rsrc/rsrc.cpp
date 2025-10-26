@@ -1,4 +1,4 @@
-#include "rsrc/rsrc_t.h"
+#include "rsrc/rsrc.h"
 
 // rsrc_t implementation
 rsrc_t::rsrc_t(const std::string& type, int16_t id, const std::string& name, std::shared_ptr<std::vector<uint8_t>> data)
