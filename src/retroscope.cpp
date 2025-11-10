@@ -287,6 +287,82 @@ private:
     }
 };
 
+//  Collects files and groups them by content/metadata key to find duplicates
+class duplicate_detector_t : public file_visitor_t
+{
+    std::map<std::string, std::vector<std::shared_ptr<File>>> file_groups_;
+    bool use_content_comparison_;
+
+public:
+    duplicate_detector_t(bool use_content_comparison = false) : use_content_comparison_(use_content_comparison) {}
+
+    void visit_file(std::shared_ptr<File> file) override
+    {
+        auto key = get_file_key(file);
+        file->retain_folder();
+        file_groups_[key].push_back(file);
+    }
+
+    void dump_duplicates() const
+    {
+        size_t duplicate_group_count = 0;
+        size_t total_duplicate_files = 0;
+        
+        // Create a vector of duplicate groups (key, files pairs)
+        std::vector<std::pair<std::string, std::vector<std::shared_ptr<File>>>> duplicate_groups;
+        
+        for (const auto &[key, files] : file_groups_)
+        {
+            if (files.size() > 1)  // Only include groups with duplicates
+            {
+                duplicate_groups.emplace_back(key, files);
+            }
+        }
+        
+        // Sort the groups by the name of the first file in each group
+        std::sort(duplicate_groups.begin(), duplicate_groups.end(),
+                 [](const auto& a, const auto& b) {
+                     return a.second[0]->name() < b.second[0]->name();
+                 });
+        
+        for (const auto &[key, files] : duplicate_groups)
+        {
+            duplicate_group_count++;
+            total_duplicate_files += files.size();
+            
+            std::cout << std::format("=== Duplicate group {} ({} files) ===\n", 
+                                   duplicate_group_count, files.size());
+            std::cout << std::format("Key: {}\n", key);
+            
+            for (const auto &file : files)
+            {
+                std::string path = string_from_path(file->retained_path());
+                std::cout << std::format("  {} in {} ({})\n", 
+                                       string_from_file(*file),
+                                       string_from_disk(file->disk()),
+                                       path.empty() ? "root" : path);
+            }
+            std::cout << std::endl;
+        }
+        
+        if (duplicate_group_count == 0)
+        {
+            std::cout << "No duplicate files found.\n";
+        }
+        else
+        {
+            std::cout << std::format("Summary: {} duplicate groups with {} total files\n", 
+                                   duplicate_group_count, total_duplicate_files);
+        }
+    }
+
+private:
+    std::string get_file_key(const std::shared_ptr<File> &file) const
+    {
+        return use_content_comparison_ ? file->content_key() : file->key();
+    }
+};
+
 class file_printer_t : public file_visitor_t
 {
     void dump_data( const std::vector<uint8_t> &data ) {
@@ -804,12 +880,13 @@ int main(int argc, char *argv[])
 {
     if (argc < 2)
     {
-        std::cerr << "Usage: " << argv[0] << " {list|diff|icon} <disk_image_file_or_directory> [additional_paths...]\n";
+        std::cerr << "Usage: " << argv[0] << " {list|diff|icon|dups} <disk_image_file_or_directory> [additional_paths...]\n";
         std::cerr << "Analyzes vintage Macintosh HFS disk images and list content.\n";
         std::cerr << "Commands:\n";
         std::cerr << "  list - List files in the disk images\n";
         std::cerr << "  diff - Show files that differ between disk images\n";
         std::cerr << "  icon - Extract and deduplicate ICON resources using MD5 hashes\n";
+        std::cerr << "  dups - Find and show duplicate files across disk images\n";
         std::cerr << "If a directory is provided, recursively processes all files in it.\n";
         std::cerr << "Multiple paths can be specified to process them all.\n";
         std::cerr << "Options:\n";
@@ -817,7 +894,7 @@ int main(int argc, char *argv[])
         std::cerr << "  --creator=XXXX Filter by file creator\n";
         std::cerr << "  --name=substr  Filter by filename substring\n";
         std::cerr << "  --group        Group files by type/creator (list command only)\n";
-        std::cerr << "  --content      Use MD5 content comparison for diff (diff command only)\n";
+        std::cerr << "  --content      Use MD5 content comparison (diff and dups commands)\n";
         return 1;
     }
 
@@ -826,9 +903,9 @@ int main(int argc, char *argv[])
         // Parse command line arguments
         auto [command, flags, paths] = parse_arguments(argc, argv);
 
-        if (command != "list" && command != "diff" && command != "icon")
+        if (command != "list" && command != "diff" && command != "icon" && command != "dups")
         {
-            std::cerr << "Error: First argument must be 'list', 'diff', or 'icon'\n";
+            std::cerr << "Error: First argument must be 'list', 'diff', 'icon', or 'dups'\n";
             return 1;
         }
 
@@ -873,6 +950,15 @@ int main(int argc, char *argv[])
             filter_visitor_t visitor{filters, icon_extractor};
             process_paths(paths, visitor);
             icon_extractor->dump_icons();
+            return 0;
+        }
+
+        if (command == "dups")
+        {
+            auto duplicate_detector = std::make_shared<duplicate_detector_t>(gContent);
+            filter_visitor_t visitor{filters, duplicate_detector};
+            process_paths(paths, visitor);
+            duplicate_detector->dump_duplicates();
             return 0;
         }
 
