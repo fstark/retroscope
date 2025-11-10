@@ -49,6 +49,11 @@ public:
 	// concatenation of name, type, creator, datasize, rscsize and content MD5 hashes
 	std::string content_key() const;
 
+private:
+	// Calculate MD5 hash of resource fork, skipping filesystem metadata padding
+	std::string calculate_rsrc_md5() const;
+
+public:
 	// Read methods using fork_t
 	std::vector<uint8_t> read_data(uint32_t offset = 0, uint32_t size = UINT32_MAX);
 	std::vector<uint8_t> read_rsrc(uint32_t offset = 0, uint32_t size = UINT32_MAX);
